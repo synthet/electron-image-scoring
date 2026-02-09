@@ -1,0 +1,12 @@
+{
+    "database": {
+        "host": "127.0.0.1",
+        "port": 3050,
+        "user": "sysdba",
+        "password": "masterkey",
+        "path": "../image-scoring/SCORING_HISTORY.FDB"
+    },
+    "dev": {
+        "url": "http://localhost:5173"
+    }
+}

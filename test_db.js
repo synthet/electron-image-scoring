@@ -1,16 +1,37 @@
 const Firebird = require('node-firebird');
 const path = require('path');
+const fs = require('fs');
 
-// Simulate the path logic
-const dbPath = path.resolve(path.join(__dirname, '../SCORING_HISTORY.FDB'));
+// Load configuration
+function loadConfig() {
+    const configPath = path.resolve(path.join(__dirname, 'config.json'));
+    try {
+        if (fs.existsSync(configPath)) {
+            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Failed to load config.json:', e);
+    }
+    return {};
+}
+
+const config = loadConfig();
+const dbConfig = config.database || {};
+
+// Database options
+const rawDbPath = dbConfig.path || '../image-scoring/SCORING_HISTORY.FDB';
+const dbPath = path.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : path.resolve(path.join(__dirname, rawDbPath));
+
 console.log('Resolved DB Path:', dbPath);
 
 const options = {
-    host: '127.0.0.1',
-    port: 3050,
+    host: dbConfig.host || '127.0.0.1',
+    port: dbConfig.port || 3050,
     database: dbPath,
-    user: 'sysdba',
-    password: 'masterkey',
+    user: dbConfig.user || 'sysdba',
+    password: dbConfig.password || 'masterkey',
     lowercase_keys: true,
     role: ''
 };

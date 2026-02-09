@@ -1,20 +1,39 @@
 import Firebird from 'node-firebird';
 import path from 'path';
+import fs from 'fs';
 import { app } from 'electron';
 
+// Load configuration
+function loadConfig() {
+    const configPath = path.resolve(path.join(__dirname, '../config.json'));
+    try {
+        if (fs.existsSync(configPath)) {
+            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Failed to load config.json:', e);
+    }
+    return {};
+}
+
+const config = loadConfig();
+const dbConfig = config.database || {};
+
 // Database options
-// __dirname is dist-electron/
-// We need to go up: dist-electron -> electron-gallery -> image-scoring
-const dbPath = path.resolve(path.join(__dirname, '../../SCORING_HISTORY.FDB'));
+// If path is relative in config, it's relative to the project root (one level up from dist-electron)
+const rawDbPath = dbConfig.path || '../image-scoring/SCORING_HISTORY.FDB';
+const dbPath = path.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : path.resolve(path.join(__dirname, '..', rawDbPath));
 
 console.log('Connecting to DB at:', dbPath);
 
 const options: Firebird.Options = {
-    host: '127.0.0.1',
-    port: 3050,
+    host: dbConfig.host || '127.0.0.1',
+    port: dbConfig.port || 3050,
     database: dbPath,
-    user: 'sysdba',
-    password: 'masterkey',
+    user: dbConfig.user || 'sysdba',
+    password: dbConfig.password || 'masterkey',
     lowercase_keys: true,
     role: '',
     pageSize: 4096

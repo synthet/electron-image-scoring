@@ -18,6 +18,21 @@ protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { secure: true, supportFetchAPI: true, standard: true, bypassCSP: true } }
 ]);
 
+// Load configuration
+function loadConfig() {
+    const configPath = path.resolve(path.join(__dirname, '../config.json'));
+    try {
+        if (fs.existsSync(configPath)) {
+            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Failed to load config.json:', e);
+    }
+    return {};
+}
+
+const config = loadConfig();
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -31,7 +46,8 @@ function createWindow() {
     });
 
     if (isDev) {
-        mainWindow.loadURL('http://localhost:5173');
+        const devUrl = config.dev?.url || 'http://localhost:5173';
+        mainWindow.loadURL(devUrl);
         mainWindow.webContents.openDevTools();
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));

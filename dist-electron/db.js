@@ -12,17 +12,35 @@ exports.getImageDetails = getImageDetails;
 exports.getFolders = getFolders;
 const node_firebird_1 = __importDefault(require("node-firebird"));
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+// Load configuration
+function loadConfig() {
+    const configPath = path_1.default.resolve(path_1.default.join(__dirname, '../config.json'));
+    try {
+        if (fs_1.default.existsSync(configPath)) {
+            return JSON.parse(fs_1.default.readFileSync(configPath, 'utf8'));
+        }
+    }
+    catch (e) {
+        console.error('Failed to load config.json:', e);
+    }
+    return {};
+}
+const config = loadConfig();
+const dbConfig = config.database || {};
 // Database options
-// __dirname is dist-electron/
-// We need to go up: dist-electron -> electron-gallery -> image-scoring
-const dbPath = path_1.default.resolve(path_1.default.join(__dirname, '../../SCORING_HISTORY.FDB'));
+// If path is relative in config, it's relative to the project root (one level up from dist-electron)
+const rawDbPath = dbConfig.path || '../image-scoring/SCORING_HISTORY.FDB';
+const dbPath = path_1.default.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : path_1.default.resolve(path_1.default.join(__dirname, '..', rawDbPath));
 console.log('Connecting to DB at:', dbPath);
 const options = {
-    host: '127.0.0.1',
-    port: 3050,
+    host: dbConfig.host || '127.0.0.1',
+    port: dbConfig.port || 3050,
     database: dbPath,
-    user: 'sysdba',
-    password: 'masterkey',
+    user: dbConfig.user || 'sysdba',
+    password: dbConfig.password || 'masterkey',
     lowercase_keys: true,
     role: '',
     pageSize: 4096

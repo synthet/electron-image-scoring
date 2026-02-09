@@ -52,6 +52,20 @@ let mainWindow = null;
 electron_1.protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { secure: true, supportFetchAPI: true, standard: true, bypassCSP: true } }
 ]);
+// Load configuration
+function loadConfig() {
+    const configPath = path_1.default.resolve(path_1.default.join(__dirname, '../config.json'));
+    try {
+        if (fs_1.default.existsSync(configPath)) {
+            return JSON.parse(fs_1.default.readFileSync(configPath, 'utf8'));
+        }
+    }
+    catch (e) {
+        console.error('Failed to load config.json:', e);
+    }
+    return {};
+}
+const config = loadConfig();
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 1200,
@@ -64,7 +78,8 @@ function createWindow() {
         },
     });
     if (electron_is_dev_1.default) {
-        mainWindow.loadURL('http://localhost:5173');
+        const devUrl = config.dev?.url || 'http://localhost:5173';
+        mainWindow.loadURL(devUrl);
         mainWindow.webContents.openDevTools();
     }
     else {

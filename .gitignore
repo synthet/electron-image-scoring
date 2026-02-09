@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Moltbook related files
+moltbook_config.json
+scripts/moltbook_*
+skills/moltbook/

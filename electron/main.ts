@@ -108,6 +108,26 @@ app.whenReady().then(() => {
         }
     });
 
+    ipcMain.handle('db:update-image-details', async (_, { id, updates }) => {
+        try {
+            console.log(`[Main] Updating image details for ID: ${id}`, updates);
+            return await db.updateImageDetails(id, updates);
+        } catch (e: any) {
+            console.error('[Main] DB Error (update):', e);
+            throw e;
+        }
+    });
+
+    ipcMain.handle('db:delete-image', async (_, id) => {
+        try {
+            console.log(`[Main] Deleting image ID: ${id}`);
+            return await db.deleteImage(id);
+        } catch (e: any) {
+            console.error('[Main] DB Error (delete):', e);
+            throw e;
+        }
+    });
+
     ipcMain.handle('db:get-keywords', async () => {
         try {
             return await db.getKeywords();

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { X, Star, FileText } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw } from 'lucide-react';
 
 interface Image {
     id: number;
@@ -100,6 +100,71 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         fetchDetails();
         return () => { active = false; };
     }, [image.id]);
+
+    // Editing State
+    const [isEditing, setIsEditing] = useState(false);
+    const [editForm, setEditForm] = useState({
+        title: '',
+        description: '',
+        rating: 0,
+        label: ''
+    });
+
+    useEffect(() => {
+        if (isEditing) {
+            setEditForm({
+                title: image.title || '',
+                description: image.description || '',
+                rating: image.rating || 0,
+                label: image.label || 'None'
+            });
+        }
+    }, [isEditing, image]);
+
+
+    const handleSave = async () => {
+        if (!window.electron) return;
+        try {
+            const updates = {
+                title: editForm.title,
+                description: editForm.description,
+                rating: editForm.rating,
+                label: editForm.label
+            };
+            const success = await window.electron.updateImageDetails(image.id, updates);
+            if (success) {
+                setImage({ ...image, ...updates });
+                setIsEditing(false);
+                // Optionally refresh list or notify parent
+            } else {
+                alert('Failed to save changes');
+            }
+        } catch (e) {
+            console.error('Failed to update image:', e);
+            alert('Error updating image');
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!window.electron) return;
+        if (!confirm('Are you sure you want to delete this image from the database? This cannot be undone.')) return;
+
+        try {
+            const success = await window.electron.deleteImage(image.id);
+            if (success) {
+                onClose(); // Close viewer
+                // We should ideally reload the grid here. 
+                // A quick hack is to reload the window or trigger a callback.
+                // For now, let's just close. The user will see it gone on refresh.
+                window.location.reload();
+            } else {
+                alert('Failed to delete image');
+            }
+        } catch (e) {
+            console.error('Failed to delete image:', e);
+            alert('Error deleting image');
+        }
+    };
 
     const [previewSrc, setPreviewSrc] = React.useState<string>('');
     const [loading, setLoading] = React.useState(false);
@@ -264,27 +329,90 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     </div>
                 </div>
 
-                {image.title && (
-                    <div>
-                        <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>TITLE</div>
-                        <div style={{ fontSize: '1em' }}>{image.title}</div>
-                    </div>
-                )}
+                {/* Edit Controls */}
+                <div style={{ display: 'flex', gap: 10 }}>
+                    {!isEditing ? (
+                        <>
+                            <button onClick={() => setIsEditing(true)} style={{ flex: 1, padding: 8, background: '#007acc', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <Edit2 size={16} /> Edit
+                            </button>
+                            <button onClick={handleDelete} style={{ flex: 1, padding: 8, background: '#d32f2f', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <Trash2 size={16} /> Delete
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={handleSave} style={{ flex: 1, padding: 8, background: '#43a047', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <Save size={16} /> Save
+                            </button>
+                            <button onClick={() => setIsEditing(false)} style={{ flex: 1, padding: 8, background: '#555', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                <RotateCcw size={16} /> Cancel
+                            </button>
+                        </>
+                    )}
+                </div>
 
-                {image.description && (
-                    <div>
-                        <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>DESCRIPTION</div>
-                        <div style={{ fontSize: '0.9em', color: '#ccc', whiteSpace: 'pre-wrap' }}>{image.description}</div>
+                {!isEditing ? (
+                    <>
+                        {image.title && (
+                            <div>
+                                <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>TITLE</div>
+                                <div style={{ fontSize: '1em' }}>{image.title}</div>
+                            </div>
+                        )}
+
+                        {image.description && (
+                            <div>
+                                <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>DESCRIPTION</div>
+                                <div style={{ fontSize: '0.9em', color: '#ccc', whiteSpace: 'pre-wrap' }}>{image.description}</div>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div>
+                            <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>TITLE</div>
+                            <input
+                                type="text"
+                                value={editForm.title}
+                                onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                                style={{ width: '100%', padding: 5, background: '#333', color: 'white', border: '1px solid #555', borderRadius: 4 }}
+                            />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>DESCRIPTION</div>
+                            <textarea
+                                value={editForm.description}
+                                onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                                rows={3}
+                                style={{ width: '100%', padding: 5, background: '#333', color: 'white', border: '1px solid #555', borderRadius: 4, resize: 'vertical' }}
+                            />
+                        </div>
                     </div>
                 )}
 
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', borderTop: '1px solid #333', borderBottom: '1px solid #333' }}>
                     <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>RATING</div>
-                        <div style={{ color: '#ffd700', fontSize: '1.1em', display: 'flex', alignItems: 'center' }}>
-                            <Star fill="#ffd700" size={16} style={{ marginRight: 4 }} />
-                            {image.rating}
-                        </div>
+                        {!isEditing ? (
+                            <div style={{ color: '#ffd700', fontSize: '1.1em', display: 'flex', alignItems: 'center' }}>
+                                <Star fill="#ffd700" size={16} style={{ marginRight: 4 }} />
+                                {image.rating}
+                            </div>
+                        ) : (
+                            <select
+                                value={editForm.rating}
+                                onChange={e => setEditForm({ ...editForm, rating: Number(e.target.value) })}
+                                style={{ width: '100%', padding: 5, background: '#333', color: 'white', border: '1px solid #555', borderRadius: 4 }}
+                            >
+                                <option value={0}>0 - Unrated</option>
+                                <option value={1}>1 - Poor</option>
+                                <option value={2}>2 - Fair</option>
+                                <option value={3}>3 - Good</option>
+                                <option value={4}>4 - Very Good</option>
+                                <option value={5}>5 - Excellent</option>
+                            </select>
+                        )}
                     </div>
 
                     <div style={{ width: 1, height: 30, background: '#333' }}></div>
@@ -299,14 +427,39 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
                 <div>
                     <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>LABEL</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{
-                            width: 16, height: 16, borderRadius: '50%',
-                            backgroundColor: labelColor,
-                            border: labelColor === 'None' ? '1px solid #555' : 'none'
-                        }} />
-                        <span>{image.label || 'None'}</span>
-                    </div>
+                    {!isEditing ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{
+                                width: 16, height: 16, borderRadius: '50%',
+                                backgroundColor: labelColor,
+                                border: labelColor === 'None' ? '1px solid #555' : 'none'
+                            }} />
+                            <span>{image.label || 'None'}</span>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', gap: 5 }}>
+                            {['None', 'Red', 'Yellow', 'Green', 'Blue', 'Purple'].map(color => {
+                                const bg = color === 'Red' ? '#e53935' :
+                                    color === 'Yellow' ? '#fdd835' :
+                                        color === 'Green' ? '#43a047' :
+                                            color === 'Blue' ? '#1e88e5' :
+                                                color === 'Purple' ? '#8e24aa' : '#333';
+                                return (
+                                    <button
+                                        key={color}
+                                        onClick={() => setEditForm({ ...editForm, label: color })}
+                                        style={{
+                                            width: 24, height: 24, borderRadius: '50%',
+                                            background: bg,
+                                            border: editForm.label === color ? '2px solid white' : '1px solid #555',
+                                            cursor: 'pointer'
+                                        }}
+                                        title={color}
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {!detailsLoaded && (

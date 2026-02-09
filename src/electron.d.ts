@@ -7,6 +7,8 @@ declare global {
             getImageCount: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<number | { error: string }>;
             getImages: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<any[]>;
             getImageDetails: (id: number) => Promise<any>;
+            updateImageDetails: (id: number, updates: any) => Promise<boolean>;
+            deleteImage: (id: number) => Promise<boolean>;
             getFolders: () => Promise<any[]>;
             getKeywords: () => Promise<string[]>;
             log: (level: string, message: string, data?: any) => Promise<boolean>;

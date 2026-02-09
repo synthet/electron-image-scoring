@@ -306,3 +306,41 @@ export async function getImageDetails(id: number): Promise<any> {
 export async function getFolders(): Promise<any[]> {
     return query('SELECT id, path, parent_id, is_fully_scored FROM folders ORDER BY path ASC');
 }
+
+export async function updateImageDetails(id: number, updates: any): Promise<boolean> {
+    const allowedFields = ['title', 'description', 'rating', 'label'];
+    const setParts: string[] = [];
+    const params: any[] = [];
+
+    for (const field of allowedFields) {
+        if (updates[field] !== undefined) {
+            setParts.push(`${field} = ?`);
+            params.push(updates[field]);
+        }
+    }
+
+    if (setParts.length === 0) return false;
+
+    params.push(id);
+    const sql = `UPDATE images SET ${setParts.join(', ')} WHERE id = ?`;
+
+    try {
+        await query(sql, params);
+        return true;
+    } catch (e) {
+        console.error('[DB] Update failed:', e);
+        return false;
+    }
+}
+
+export async function deleteImage(id: number): Promise<boolean> {
+    // Note: This only deletes from the DB. Use with caution.
+    // Real file deletion should probably happen too, but let's stick to DB for now as per plan.
+    try {
+        await query('DELETE FROM images WHERE id = ?', [id]);
+        return true;
+    } catch (e) {
+        console.error('[DB] Delete failed:', e);
+        return false;
+    }
+}

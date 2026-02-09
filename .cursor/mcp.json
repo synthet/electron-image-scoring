@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+        "image-scoring": {
+            "command": "python",
+            "args": [
+                "-m",
+                "modules.mcp_server"
+            ],
+            "env": {
+                "PYTHONPATH": "d:\\Projects\\image-scoring"
+            }
+        }
+    }
+}

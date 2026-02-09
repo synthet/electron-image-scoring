@@ -136,6 +136,26 @@ electron_1.app.whenReady().then(() => {
             throw e; // Re-throw so the error reaches the renderer
         }
     });
+    electron_1.ipcMain.handle('db:update-image-details', async (_, { id, updates }) => {
+        try {
+            console.log(`[Main] Updating image details for ID: ${id}`, updates);
+            return await db.updateImageDetails(id, updates);
+        }
+        catch (e) {
+            console.error('[Main] DB Error (update):', e);
+            throw e;
+        }
+    });
+    electron_1.ipcMain.handle('db:delete-image', async (_, id) => {
+        try {
+            console.log(`[Main] Deleting image ID: ${id}`);
+            return await db.deleteImage(id);
+        }
+        catch (e) {
+            console.error('[Main] DB Error (delete):', e);
+            throw e;
+        }
+    });
     electron_1.ipcMain.handle('db:get-keywords', async () => {
         try {
             return await db.getKeywords();

@@ -10,6 +10,8 @@ exports.getImages = getImages;
 exports.getKeywords = getKeywords;
 exports.getImageDetails = getImageDetails;
 exports.getFolders = getFolders;
+exports.updateImageDetails = updateImageDetails;
+exports.deleteImage = deleteImage;
 const node_firebird_1 = __importDefault(require("node-firebird"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -267,4 +269,39 @@ async function getImageDetails(id) {
 }
 async function getFolders() {
     return query('SELECT id, path, parent_id, is_fully_scored FROM folders ORDER BY path ASC');
+}
+async function updateImageDetails(id, updates) {
+    const allowedFields = ['title', 'description', 'rating', 'label'];
+    const setParts = [];
+    const params = [];
+    for (const field of allowedFields) {
+        if (updates[field] !== undefined) {
+            setParts.push(`${field} = ?`);
+            params.push(updates[field]);
+        }
+    }
+    if (setParts.length === 0)
+        return false;
+    params.push(id);
+    const sql = `UPDATE images SET ${setParts.join(', ')} WHERE id = ?`;
+    try {
+        await query(sql, params);
+        return true;
+    }
+    catch (e) {
+        console.error('[DB] Update failed:', e);
+        return false;
+    }
+}
+async function deleteImage(id) {
+    // Note: This only deletes from the DB. Use with caution.
+    // Real file deletion should probably happen too, but let's stick to DB for now as per plan.
+    try {
+        await query('DELETE FROM images WHERE id = ?', [id]);
+        return true;
+    }
+    catch (e) {
+        console.error('[DB] Delete failed:', e);
+        return false;
+    }
 }

@@ -480,8 +480,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
                             {image.score_spaq > 0 && <ScoreBar label="SPAQ" value={image.score_spaq} />}
                             {image.score_ava > 0 && <ScoreBar label="AVA" value={image.score_ava} />}
-                            {image.score_koniq > 0 && <ScoreBar label="KonIQ" value={image.score_koniq} />}
-                            {image.score_paq2piq > 0 && <ScoreBar label="PaQ2PiQ" value={image.score_paq2piq} />}
                             {image.score_liqe > 0 && <ScoreBar label="LIQE" value={image.score_liqe} />}
                         </div>
 

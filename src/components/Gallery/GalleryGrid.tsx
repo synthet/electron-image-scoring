@@ -161,20 +161,24 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEn
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888', marginTop: '4px' }}>
                         <span>
                             {(() => {
-                                let scoreVal = 0;
-                                let label = '';
                                 switch (sortBy) {
-                                    case 'score_technical': scoreVal = img.score_technical || 0; break;
-                                    case 'score_aesthetic': scoreVal = img.score_aesthetic || 0; break;
-                                    case 'score_spaq': scoreVal = img.score_spaq || 0; break;
-                                    case 'score_ava': scoreVal = img.score_ava || 0; break;
-                                    case 'score_koniq': scoreVal = img.score_koniq || 0; break;
-                                    case 'score_paq2piq': scoreVal = img.score_paq2piq || 0; break;
-                                    case 'score_liqe': scoreVal = img.score_liqe || 0; break;
-                                    default: scoreVal = img.score_general;
+                                    case 'created_at':
+                                        return img.created_at ? new Date(img.created_at).toLocaleDateString() : '-';
+                                    case 'id':
+                                        return `#${img.id}`;
+                                    case 'score_technical':
+                                        return img.score_technical ? `${Math.round(img.score_technical * 100)}%` : '-';
+                                    case 'score_aesthetic':
+                                        return img.score_aesthetic ? `${Math.round(img.score_aesthetic * 100)}%` : '-';
+                                    case 'score_spaq':
+                                        return img.score_spaq ? `${Math.round(img.score_spaq * 100)}%` : '-';
+                                    case 'score_ava':
+                                        return img.score_ava ? `${Math.round(img.score_ava * 100)}%` : '-';
+                                    case 'score_liqe':
+                                        return img.score_liqe ? `${Math.round(img.score_liqe * 100)}%` : '-';
+                                    default:
+                                        return img.score_general > 0 ? `${Math.round(img.score_general * 100)}%` : '-';
                                 }
-
-                                return scoreVal > 0 ? `${Math.round(scoreVal * 100)}%` : '-';
                             })()}
                         </span>
                         {/* Add more metadata here */}

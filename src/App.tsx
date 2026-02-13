@@ -142,8 +142,6 @@ function App() {
               <option value="score_aesthetic">Aesthetic Score</option>
               <option value="score_spaq">SPAQ</option>
               <option value="score_ava">AVA</option>
-              <option value="score_koniq">KonIQ</option>
-              <option value="score_paq2piq">PaQ2PiQ</option>
               <option value="score_liqe">LIQE</option>
             </select>
 

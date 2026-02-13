@@ -2,7 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.16.0] - 2026-02-08
+## [3.17.0] - 2026-02-12
+
+### Added
+- New scoring model support: SPAQ, AVA, and LIQE integration in the database and viewer.
+- Percentage-based score display in the gallery view for better interpretability.
+- Dynamic metadata display in gallery items, automatically switching based on selected sort criteria (Date, ID, or specific quality scores).
+- Support for sorting and filtering by the new scoring models (SPAQ, AVA, LIQE).
+
+### Changed
+- Refactored database queries to include new scoring columns in results.
+- Updated Gallery UI to support dynamic metadata overlays.
+
+### Fixed
+- Improved git documentation and configuration for better agent integration.
+
 
 ### Added
 - In-viewer editing of image metadata: title, description, rating, and color label directly from the image viewer.

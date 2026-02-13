@@ -148,7 +148,7 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<any[]>
     // Validate sort column to prevent SQL injection
     const allowedSortColumns = [
         'id', 'created_at', 'score_general', 'score_technical', 'score_aesthetic',
-        'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe',
+        'score_spaq', 'score_ava', 'score_liqe',
         'rating', 'file_name'
     ];
 
@@ -171,8 +171,7 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<any[]>
             i.score_aesthetic,
             i.score_spaq,
             i.score_ava,
-            i.score_koniq,
-            i.score_paq2piq,
+            i.score_ava,
             i.score_liqe,
             i.rating, 
             i.label, 

@@ -8,6 +8,13 @@ interface Image {
     file_name: string;
     thumbnail_path?: string;
     score_general: number;
+    score_technical?: number;
+    score_aesthetic?: number;
+    score_spaq?: number;
+    score_ava?: number;
+    score_koniq?: number;
+    score_paq2piq?: number;
+    score_liqe?: number;
     rating: number;
     label: string | null;
     created_at?: string;
@@ -27,6 +34,7 @@ interface GalleryGridProps {
     onSelectFolder?: (folder: Folder) => void;
     onNavigateToParent?: () => void;
     viewerOpen?: boolean;
+    sortBy?: string;
 }
 
 const ItemContainer = React.forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
@@ -64,7 +72,7 @@ const ItemWrapper = React.forwardRef<HTMLDivElement, any>(({ children, ...props 
     </div>
 ));
 
-export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEndReached, subfolders, onSelectFolder, onNavigateToParent, viewerOpen = false }) => {
+export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEndReached, subfolders, onSelectFolder, onNavigateToParent, viewerOpen = false, sortBy = 'score_general' }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Escape key handler for parent navigation (only when viewer is closed)
@@ -152,9 +160,22 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEn
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888', marginTop: '4px' }}>
                         <span>
-                            {img.score_general > 0
-                                ? `${Math.round(img.score_general * 100)}%`
-                                : '-'}
+                            {(() => {
+                                let scoreVal = 0;
+                                let label = '';
+                                switch (sortBy) {
+                                    case 'score_technical': scoreVal = img.score_technical || 0; break;
+                                    case 'score_aesthetic': scoreVal = img.score_aesthetic || 0; break;
+                                    case 'score_spaq': scoreVal = img.score_spaq || 0; break;
+                                    case 'score_ava': scoreVal = img.score_ava || 0; break;
+                                    case 'score_koniq': scoreVal = img.score_koniq || 0; break;
+                                    case 'score_paq2piq': scoreVal = img.score_paq2piq || 0; break;
+                                    case 'score_liqe': scoreVal = img.score_liqe || 0; break;
+                                    default: scoreVal = img.score_general;
+                                }
+
+                                return scoreVal > 0 ? `${Math.round(scoreVal * 100)}%` : '-';
+                            })()}
                         </span>
                         {/* Add more metadata here */}
                     </div>

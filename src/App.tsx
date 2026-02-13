@@ -195,6 +195,7 @@ function App() {
               return find([f])?.children || [];
             })}
             onSelectFolder={handleSelectFolder}
+            sortBy={filters.sortBy}
           />
           {openingImage && (
             <ImageViewer

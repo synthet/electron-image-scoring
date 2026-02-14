@@ -10,6 +10,10 @@ electron_1.contextBridge.exposeInMainWorld('electron', {
     deleteImage: (id) => electron_1.ipcRenderer.invoke('db:delete-image', id),
     getFolders: () => electron_1.ipcRenderer.invoke('db:get-folders'),
     getKeywords: () => electron_1.ipcRenderer.invoke('db:get-keywords'),
+    getStacks: (options) => electron_1.ipcRenderer.invoke('db:get-stacks', options),
+    getImagesByStack: (stackId, options) => electron_1.ipcRenderer.invoke('db:get-images-by-stack', { stackId, options }),
+    getStackCount: (options) => electron_1.ipcRenderer.invoke('db:get-stack-count', options),
+    rebuildStackCache: () => electron_1.ipcRenderer.invoke('db:rebuild-stack-cache'),
     log: (level, message, data) => electron_1.ipcRenderer.invoke('debug:log', { level, message, data, timestamp: Date.now() }),
     extractNefPreview: (filePath) => electron_1.ipcRenderer.invoke('nef:extract-preview', filePath),
 });

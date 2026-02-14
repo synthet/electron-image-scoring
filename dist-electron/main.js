@@ -165,6 +165,43 @@ electron_1.app.whenReady().then(() => {
             return [];
         }
     });
+    electron_1.ipcMain.handle('db:get-stacks', async (_, options) => {
+        try {
+            return await db.getStacks(options);
+        }
+        catch (e) {
+            console.error('DB Error (stacks):', e);
+            return [];
+        }
+    });
+    electron_1.ipcMain.handle('db:get-images-by-stack', async (_, { stackId, options }) => {
+        try {
+            return await db.getImagesByStack(stackId, options);
+        }
+        catch (e) {
+            console.error('DB Error (images by stack):', e);
+            return [];
+        }
+    });
+    electron_1.ipcMain.handle('db:get-stack-count', async (_, options) => {
+        try {
+            return await db.getStackCount(options);
+        }
+        catch (e) {
+            console.error('DB Error (stack count):', e);
+            return { error: e.message };
+        }
+    });
+    electron_1.ipcMain.handle('db:rebuild-stack-cache', async () => {
+        try {
+            const count = await db.rebuildStackCache();
+            return { success: true, count };
+        }
+        catch (e) {
+            console.error('DB Error (rebuild stack cache):', e);
+            return { success: false, error: e.message };
+        }
+    });
     electron_1.ipcMain.handle('db:get-folders', async () => {
         try {
             const rawFolders = await db.getFolders();

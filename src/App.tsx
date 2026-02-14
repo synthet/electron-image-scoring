@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { MainLayout } from './components/Layout/MainLayout';
-import { useDatabase, useImages, useKeywords } from './hooks/useDatabase';
+import { useDatabase, useImages, useKeywords, useStacks } from './hooks/useDatabase';
 import { useFolders } from './hooks/useFolders';
 import { FolderTree } from './components/Tree/FolderTree';
 import type { Folder } from './components/Tree/treeUtils';
@@ -21,10 +21,57 @@ function App() {
   const [openingImage, setOpeningImage] = useState<any | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
 
+  // Stacks mode state
+  const [stacksMode, setStacksMode] = useState(false);
+  const [activeStackId, setActiveStackId] = useState<number | null>(null);
+  const [activeStackInfo, setActiveStackInfo] = useState<{ stackId: number; imageCount: number } | null>(null);
+  const [cacheBuilt, setCacheBuilt] = useState(false);
+
   const { images, loadMore, totalCount } = useImages(50, selectedFolderId, filters);
+  const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount } = useStacks(50, selectedFolderId, filters);
+
+  const [stackImages, setStackImages] = useState<any[]>([]);
+  const [stackImagesLoading, setStackImagesLoading] = useState(false);
+
+  // Rebuild stack cache when stacks mode is first enabled
+  useEffect(() => {
+    if (stacksMode && !cacheBuilt && window.electron) {
+      window.electron.rebuildStackCache().then((result) => {
+        console.log('[App] Stack cache rebuild result:', result);
+        setCacheBuilt(true);
+      }).catch(err => {
+        console.error('[App] Failed to rebuild stack cache:', err);
+      });
+    }
+  }, [stacksMode, cacheBuilt]);
+
+  // Load images when activeStackId changes or filters change while inside a stack
+  const loadStackImages = useCallback(async (stackId: number) => {
+    if (!window.electron) return;
+    setStackImagesLoading(true);
+    try {
+      const options = { folderId: selectedFolderId, ...filters };
+      const imgs = await window.electron.getImagesByStack(stackId, options);
+      setStackImages(imgs);
+    } catch (err) {
+      console.error("Failed to load stack images", err);
+    } finally {
+      setStackImagesLoading(false);
+    }
+  }, [selectedFolderId, filters]);
+
+  // React to filter changes while viewing a stack
+  useEffect(() => {
+    if (activeStackId !== null) {
+      loadStackImages(activeStackId);
+    }
+  }, [activeStackId, loadStackImages]);
 
   const handleSelectFolder = (folder: Folder) => {
     setSelectedFolderId(folder.id);
+    setActiveStackId(null);
+    setActiveStackInfo(null);
+    setStackImages([]);
   };
 
   const currentFolder = useMemo(() => {
@@ -42,19 +89,40 @@ function App() {
   }, [folders, selectedFolderId]);
 
   const handleImageClick = (image: any) => {
-    const index = images.findIndex(img => img.id === image.id);
+    const imgList = activeStackId ? stackImages : images;
+    const index = imgList.findIndex(img => img.id === image.id);
     setCurrentImageIndex(index >= 0 ? index : 0);
     setOpeningImage(image);
   };
 
   const handleNavigateImage = (newIndex: number) => {
-    if (newIndex >= 0 && newIndex < images.length) {
+    const imgList = activeStackId ? stackImages : images;
+    if (newIndex >= 0 && newIndex < imgList.length) {
       setCurrentImageIndex(newIndex);
-      setOpeningImage(images[newIndex]);
+      setOpeningImage(imgList[newIndex]);
+    }
+  };
+
+  const handleSelectStack = (stack: any) => {
+    if (stack.stack_id !== null && stack.stack_id !== undefined) {
+      setActiveStackId(stack.stack_id);
+      setActiveStackInfo({ stackId: stack.stack_id, imageCount: stack.image_count || 0 });
+      loadStackImages(stack.stack_id);
+    } else {
+      // Single image "stack" - just open the image
+      handleImageClick(stack);
     }
   };
 
   const handleNavigateToParent = () => {
+    // If viewing inside a stack, go back to stacks view
+    if (activeStackId) {
+      setActiveStackId(null);
+      setActiveStackInfo(null);
+      setStackImages([]);
+      return;
+    }
+
     if (!selectedFolderId) return;
 
     // Find parent of current folder
@@ -77,6 +145,18 @@ function App() {
     setOpeningImage(null);
   };
 
+  // Determine current display
+  const currentImages = activeStackId ? stackImages : images;
+  const currentTotal = stacksMode && !activeStackId ? stacksTotalCount : (activeStackId ? (activeStackInfo?.imageCount || stackImages.length) : totalCount);
+
+  // Header title
+  const headerTitle = (() => {
+    if (activeStackId) {
+      return `Stack #${activeStackId}`;
+    }
+    return currentFolder ? (currentFolder.title || 'Folder') : 'Image Gallery';
+  })();
+
   if (!isConnected && !error) return <div style={{ padding: 20 }}>Connecting to services...</div>;
   if (error) return <div style={{ padding: 20, color: 'red' }}>Error: {error}</div>;
 
@@ -85,11 +165,22 @@ function App() {
       header={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: '1.2em' }}>
-            {currentFolder ? (currentFolder.title || 'Folder') : 'Image Gallery'}
+            {headerTitle}
           </h2>
           <span style={{ fontSize: '0.9em', color: '#888' }}>
-            ({totalCount} items)
+            ({currentTotal} {stacksMode && !activeStackId ? 'stacks' : 'items'})
           </span>
+          {activeStackId && (
+            <button
+              onClick={() => { setActiveStackId(null); setActiveStackInfo(null); setStackImages([]); }}
+              style={{
+                background: 'none', border: '1px solid #555', color: '#ccc',
+                padding: '2px 10px', borderRadius: 4, cursor: 'pointer', fontSize: '0.85em'
+              }}
+            >
+              ← Back to Stacks
+            </button>
+          )}
         </div>
       }
       sidebar={
@@ -100,6 +191,40 @@ function App() {
           </div>
 
           <div style={{ padding: '0 0 10px 0', display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {/* Stacks Toggle */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '6px', background: '#333', borderRadius: 4, border: '1px solid #555'
+            }}>
+              <span style={{ fontSize: '12px', color: '#ccc' }}>Stacks</span>
+              <button
+                onClick={() => {
+                  setStacksMode(!stacksMode);
+                  setActiveStackId(null);
+                  setActiveStackInfo(null);
+                  setStackImages([]);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 0,
+                  background: 'none', border: '1px solid #666', borderRadius: 12,
+                  padding: 0, cursor: 'pointer', overflow: 'hidden'
+                }}
+              >
+                <span style={{
+                  padding: '3px 10px', fontSize: '11px', fontWeight: 600,
+                  background: !stacksMode ? '#007acc' : '#444',
+                  color: !stacksMode ? '#fff' : '#999',
+                  transition: 'all 0.15s ease'
+                }}>OFF</span>
+                <span style={{
+                  padding: '3px 10px', fontSize: '11px', fontWeight: 600,
+                  background: stacksMode ? '#007acc' : '#444',
+                  color: stacksMode ? '#fff' : '#999',
+                  transition: 'all 0.15s ease'
+                }}>ON</span>
+              </button>
+            </div>
+
             <select
               value={filters.keyword || ''}
               onChange={(e) => setFilters({ ...filters, keyword: e.target.value || undefined })}
@@ -175,9 +300,9 @@ function App() {
       content={
         <div style={{ height: '100%', overflow: 'hidden' }}>
           <GalleryGrid
-            images={images}
+            images={currentImages}
             onSelect={handleImageClick}
-            onEndReached={loadMore}
+            onEndReached={activeStackId ? undefined : loadMore}
             onNavigateToParent={handleNavigateToParent}
             viewerOpen={!!openingImage}
             subfolders={folders.flatMap(f => {
@@ -194,12 +319,17 @@ function App() {
             })}
             onSelectFolder={handleSelectFolder}
             sortBy={filters.sortBy}
+            stacksMode={stacksMode}
+            stacks={stacks}
+            onSelectStack={handleSelectStack}
+            onStackEndReached={loadMoreStacks}
+            activeStackId={activeStackId}
           />
           {openingImage && (
             <ImageViewer
               image={openingImage}
               onClose={closeViewer}
-              allImages={images}
+              allImages={currentImages}
               currentIndex={currentImageIndex}
               onNavigate={handleNavigateImage}
             />

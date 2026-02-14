@@ -150,3 +150,60 @@ export function useImages(pageSize: number = 50, folderId?: number, filters?: an
 
     return { images, loading, hasMore, loadMore, totalCount };
 }
+
+export function useStacks(pageSize: number = 50, folderId?: number, filters?: any) {
+    const [stacks, setStacks] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const [offset, setOffset] = useState(0);
+    const [totalCount, setTotalCount] = useState(0);
+
+    // Reset when folder or filters change
+    useEffect(() => {
+        setStacks([]);
+        setOffset(0);
+        setHasMore(true);
+
+        if (window.electron) {
+            const options = { folderId, ...filters };
+            window.electron.getStackCount(options).then((c: any) => {
+                if (typeof c === 'number') setTotalCount(c);
+            });
+        }
+    }, [folderId, JSON.stringify(filters)]);
+
+    const loadMore = async () => {
+        if (!window.electron || loading || !hasMore) return;
+
+        setLoading(true);
+        try {
+            const options = { limit: pageSize, offset, folderId, ...filters };
+            const newStacks = await window.electron.getStacks(options);
+
+            if (newStacks.length < pageSize) {
+                setHasMore(false);
+            }
+
+            setStacks(prev => {
+                const existingKeys = new Set(prev.map(s => s.stack_key));
+                const filtered = newStacks.filter((s: any) => !existingKeys.has(s.stack_key));
+                return [...prev, ...filtered];
+            });
+
+            setOffset(prev => prev + pageSize);
+        } catch (err) {
+            console.error("Failed to load stacks", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (offset === 0 && hasMore && !loading) {
+            loadMore();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [offset, folderId, JSON.stringify(filters)]);
+
+    return { stacks, loading, hasMore, loadMore, totalCount };
+}

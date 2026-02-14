@@ -11,6 +11,11 @@ exports.getKeywords = getKeywords;
 exports.getImageDetails = getImageDetails;
 exports.getFolders = getFolders;
 exports.updateImageDetails = updateImageDetails;
+exports.ensureStackCacheTable = ensureStackCacheTable;
+exports.rebuildStackCache = rebuildStackCache;
+exports.getStacks = getStacks;
+exports.getImagesByStack = getImagesByStack;
+exports.getStackCount = getStackCount;
 exports.deleteImage = deleteImage;
 const node_firebird_1 = __importDefault(require("node-firebird"));
 const path_1 = __importDefault(require("path"));
@@ -128,7 +133,7 @@ async function getImages(options = {}) {
     // Validate sort column to prevent SQL injection
     const allowedSortColumns = [
         'id', 'created_at', 'score_general', 'score_technical', 'score_aesthetic',
-        'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe',
+        'score_spaq', 'score_ava', 'score_liqe',
         'rating', 'file_name'
     ];
     // Default to score_general if invalid
@@ -147,8 +152,7 @@ async function getImages(options = {}) {
             i.score_aesthetic,
             i.score_spaq,
             i.score_ava,
-            i.score_koniq,
-            i.score_paq2piq,
+            i.score_ava,
             i.score_liqe,
             i.rating, 
             i.label, 
@@ -299,6 +303,327 @@ async function updateImageDetails(id, updates) {
         console.error('[DB] Update failed:', e);
         return false;
     }
+}
+// ---- Stack Cache ----
+// The stack_cache table stores pre-computed MIN/MAX of each score column per stack_id.
+// This avoids expensive GROUP BY aggregation on every request.
+let stackCacheInitPromise = null;
+async function ensureStackCacheTable() {
+    if (stackCacheInitPromise)
+        return stackCacheInitPromise;
+    stackCacheInitPromise = (async () => {
+        try {
+            await query(`
+                SELECT 1 FROM stack_cache WHERE 1=0
+            `);
+        }
+        catch {
+            // Table doesn't exist, create it
+            try {
+                await query(`
+                    CREATE TABLE stack_cache (
+                        stack_id INTEGER NOT NULL PRIMARY KEY,
+                        image_count INTEGER DEFAULT 0,
+                        rep_image_id INTEGER,
+                        min_score_general DOUBLE PRECISION,
+                        max_score_general DOUBLE PRECISION,
+                        min_score_technical DOUBLE PRECISION,
+                        max_score_technical DOUBLE PRECISION,
+                        min_score_aesthetic DOUBLE PRECISION,
+                        max_score_aesthetic DOUBLE PRECISION,
+                        min_score_spaq DOUBLE PRECISION,
+                        max_score_spaq DOUBLE PRECISION,
+                        min_score_ava DOUBLE PRECISION,
+                        max_score_ava DOUBLE PRECISION,
+                        min_score_liqe DOUBLE PRECISION,
+                        max_score_liqe DOUBLE PRECISION,
+                        min_rating INTEGER,
+                        max_rating INTEGER,
+                        min_created_at TIMESTAMP,
+                        max_created_at TIMESTAMP,
+                        folder_id INTEGER
+                    )
+                `);
+                console.log('[DB] Created stack_cache table');
+            }
+            catch (e2) {
+                const errStr = String(e2);
+                if (errStr.includes('RDB$RELATION_NAME') || errStr.includes('exists')) {
+                    console.log('[DB] stack_cache table already exists (race condition ignored)');
+                }
+                else {
+                    console.error('[DB] Failed to create stack_cache table:', e2);
+                    // Reset promise on failure to allow retry
+                    stackCacheInitPromise = null;
+                    throw e2;
+                }
+            }
+        }
+    })();
+    return stackCacheInitPromise;
+}
+async function rebuildStackCache() {
+    await ensureStackCacheTable();
+    // Clear existing cache
+    await query('DELETE FROM stack_cache');
+    // Populate from images table - only for actual stacks (stack_id IS NOT NULL)
+    const sql = `
+        INSERT INTO stack_cache (
+            stack_id, image_count, rep_image_id, folder_id,
+            min_score_general, max_score_general,
+            min_score_technical, max_score_technical,
+            min_score_aesthetic, max_score_aesthetic,
+            min_score_spaq, max_score_spaq,
+            min_score_ava, max_score_ava,
+            min_score_liqe, max_score_liqe,
+            min_rating, max_rating,
+            min_created_at, max_created_at
+        )
+        SELECT
+            i.stack_id,
+            COUNT(*),
+            MIN(i.id),
+            MIN(i.folder_id),
+            MIN(i.score_general), MAX(i.score_general),
+            MIN(i.score_technical), MAX(i.score_technical),
+            MIN(i.score_aesthetic), MAX(i.score_aesthetic),
+            MIN(i.score_spaq), MAX(i.score_spaq),
+            MIN(i.score_ava), MAX(i.score_ava),
+            MIN(i.score_liqe), MAX(i.score_liqe),
+            MIN(i.rating), MAX(i.rating),
+            MIN(i.created_at), MAX(i.created_at)
+        FROM images i
+        WHERE i.stack_id IS NOT NULL
+        GROUP BY i.stack_id
+    `;
+    await query(sql);
+    // Update rep_image_id to be the image with the highest general score in each stack
+    await query(`
+        MERGE INTO stack_cache sc
+        USING (
+            SELECT i.stack_id, i.id as best_id
+            FROM images i
+            WHERE i.stack_id IS NOT NULL
+              AND i.score_general = (
+                  SELECT MAX(i2.score_general) FROM images i2 WHERE i2.stack_id = i.stack_id
+              )
+        ) src
+        ON sc.stack_id = src.stack_id
+        WHEN MATCHED THEN UPDATE SET sc.rep_image_id = src.best_id
+    `);
+    const countRows = await query('SELECT COUNT(*) as "cnt" FROM stack_cache');
+    const count = countRows[0]?.cnt || 0;
+    console.log(`[DB] Stack cache rebuilt: ${count} stacks cached`);
+    return count;
+}
+async function getStacks(options = {}) {
+    const { limit = 50, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
+    await ensureStackCacheTable();
+    const allowedSortColumns = [
+        'id', 'created_at', 'score_general', 'score_technical', 'score_aesthetic',
+        'score_spaq', 'score_ava', 'score_liqe',
+        'rating', 'file_name'
+    ];
+    const sortColumn = allowedSortColumns.includes(sortBy) ? sortBy : 'score_general';
+    const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
+    // Map sort column to cache column
+    const cacheColMap = {
+        'score_general': sortOrder === 'DESC' ? 'sc.max_score_general' : 'sc.min_score_general',
+        'score_technical': sortOrder === 'DESC' ? 'sc.max_score_technical' : 'sc.min_score_technical',
+        'score_aesthetic': sortOrder === 'DESC' ? 'sc.max_score_aesthetic' : 'sc.min_score_aesthetic',
+        'score_spaq': sortOrder === 'DESC' ? 'sc.max_score_spaq' : 'sc.min_score_spaq',
+        'score_ava': sortOrder === 'DESC' ? 'sc.max_score_ava' : 'sc.min_score_ava',
+        'score_liqe': sortOrder === 'DESC' ? 'sc.max_score_liqe' : 'sc.min_score_liqe',
+        'rating': sortOrder === 'DESC' ? 'sc.max_rating' : 'sc.min_rating',
+        'created_at': sortOrder === 'DESC' ? 'sc.max_created_at' : 'sc.min_created_at',
+    };
+    const cacheSortCol = cacheColMap[sortColumn] || (sortOrder === 'DESC' ? 'sc.max_score_general' : 'sc.min_score_general');
+    // Build query from cache + join to get rep image info
+    const params = [];
+    const whereParts = [];
+    if (folderId) {
+        whereParts.push('sc.folder_id = ?');
+        params.push(folderId);
+    }
+    if (minRating !== undefined && minRating > 0) {
+        whereParts.push('sc.max_rating >= ?');
+        params.push(minRating);
+    }
+    const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
+    params.push(offset, limit);
+    // Query stacks from cache, join representative image
+    const sql = `
+        SELECT
+            sc.stack_id,
+            sc.stack_id as stack_key,
+            sc.image_count,
+            ${cacheSortCol} as sort_value,
+            sc.rep_image_id,
+            i.id,
+            COALESCE(fp.path, i.file_path) as file_path,
+            i.file_name,
+            i.score_general,
+            i.score_technical,
+            i.score_aesthetic,
+            i.score_spaq,
+            i.score_ava,
+            i.score_liqe,
+            i.rating,
+            i.label,
+            i.created_at,
+            i.thumbnail_path
+        FROM stack_cache sc
+        JOIN images i ON i.id = sc.rep_image_id
+        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+        ${whereClause}
+        ORDER BY ${cacheSortCol} ${sortOrder}
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+    `;
+    const rows = await query(sql, params);
+    // Also fetch non-stacked images (stack_id IS NULL) as individual "stacks"
+    // These are not in the cache, so query them directly
+    const nonStackParams = [];
+    const nonStackWhereParts = ['i.stack_id IS NULL'];
+    if (folderId) {
+        nonStackWhereParts.push('i.folder_id = ?');
+        nonStackParams.push(folderId);
+    }
+    if (minRating !== undefined && minRating > 0) {
+        nonStackWhereParts.push('i.rating >= ?');
+        nonStackParams.push(minRating);
+    }
+    if (colorLabel) {
+        nonStackWhereParts.push('i.label = ?');
+        nonStackParams.push(colorLabel);
+    }
+    if (keyword) {
+        nonStackWhereParts.push('i.keywords LIKE ?');
+        nonStackParams.push(`%${keyword}%`);
+    }
+    const nonStackSortCol = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
+    const nonStackSql = `
+        SELECT
+            (-i.id) as stack_key,
+            i.stack_id,
+            1 as image_count,
+            i.${sortColumn} as sort_value,
+            i.id,
+            COALESCE(fp.path, i.file_path) as file_path,
+            i.file_name,
+            i.score_general,
+            i.score_technical,
+            i.score_aesthetic,
+            i.score_spaq,
+            i.score_ava,
+            i.score_liqe,
+            i.rating,
+            i.label,
+            i.created_at,
+            i.thumbnail_path
+        FROM images i
+        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+        WHERE ${nonStackWhereParts.join(' AND ')}
+        ORDER BY ${nonStackSortCol} ${sortOrder}
+    `;
+    const nonStackRows = await query(nonStackSql, nonStackParams);
+    // Merge and sort both lists together
+    const combined = [...rows, ...nonStackRows];
+    combined.sort((a, b) => {
+        const aVal = a.sort_value ?? 0;
+        const bVal = b.sort_value ?? 0;
+        return sortOrder === 'DESC' ? (bVal - aVal) : (aVal - bVal);
+    });
+    // Apply pagination to the combined result
+    return combined.slice(offset > 0 ? 0 : 0, limit);
+}
+async function getImagesByStack(stackId, options = {}) {
+    const { limit = 200, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
+    const params = [];
+    const whereParts = [];
+    if (stackId !== null && stackId !== undefined) {
+        whereParts.push('i.stack_id = ?');
+        params.push(stackId);
+    }
+    if (folderId) {
+        whereParts.push('i.folder_id = ?');
+        params.push(folderId);
+    }
+    if (minRating !== undefined && minRating > 0) {
+        whereParts.push('i.rating >= ?');
+        params.push(minRating);
+    }
+    if (colorLabel) {
+        whereParts.push('i.label = ?');
+        params.push(colorLabel);
+    }
+    if (keyword) {
+        whereParts.push('i.keywords LIKE ?');
+        params.push(`%${keyword}%`);
+    }
+    const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
+    const allowedSortColumns = [
+        'id', 'created_at', 'score_general', 'score_technical', 'score_aesthetic',
+        'score_spaq', 'score_ava', 'score_liqe',
+        'rating', 'file_name'
+    ];
+    const sortColumn = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
+    const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
+    params.push(offset, limit);
+    const sql = `
+        SELECT 
+            i.id, 
+            COALESCE(fp.path, i.file_path) as file_path, 
+            i.file_name, 
+            i.score_general, 
+            i.score_technical,
+            i.score_aesthetic,
+            i.score_spaq,
+            i.score_ava,
+            i.score_liqe,
+            i.rating, 
+            i.label, 
+            i.created_at, 
+            i.thumbnail_path,
+            i.stack_id
+        FROM images i
+        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+        ${whereClause}
+        ORDER BY ${sortColumn} ${sortOrder}
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+    `;
+    return query(sql, params);
+}
+async function getStackCount(options = {}) {
+    const { folderId, minRating, colorLabel, keyword } = options;
+    const params = [];
+    const whereParts = [];
+    if (folderId) {
+        whereParts.push('i.folder_id = ?');
+        params.push(folderId);
+    }
+    if (minRating !== undefined && minRating > 0) {
+        whereParts.push('i.rating >= ?');
+        params.push(minRating);
+    }
+    if (colorLabel) {
+        whereParts.push('i.label = ?');
+        params.push(colorLabel);
+    }
+    if (keyword) {
+        whereParts.push('i.keywords LIKE ?');
+        params.push(`%${keyword}%`);
+    }
+    const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
+    const sql = `
+        SELECT COUNT(*) as "count" FROM (
+            SELECT COALESCE(i.stack_id, -i.id) as stack_key
+            FROM images i
+            ${whereClause}
+            GROUP BY COALESCE(i.stack_id, -i.id)
+        )
+    `;
+    const rows = await query(sql, params);
+    return rows[0]?.count || 0;
 }
 async function deleteImage(id) {
     // Note: This only deletes from the DB. Use with caution.

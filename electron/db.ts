@@ -48,9 +48,14 @@ const options: Firebird.Options = {
 // We will assume server is running on localhost:3050.
 
 export async function connectDB(): Promise<Firebird.Database> {
+    console.log('[DB] Attempting to attach to Firebird...');
     return new Promise((resolve, reject) => {
         Firebird.attach(options, (err, db) => {
-            if (err) return reject(err);
+            if (err) {
+                console.error('[DB] Firebird attach failed:', err);
+                return reject(err);
+            }
+            console.log('[DB] Firebird attach successful');
             resolve(db);
         });
     });

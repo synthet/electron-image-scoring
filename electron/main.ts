@@ -34,6 +34,7 @@ function loadConfig() {
 const config = loadConfig();
 
 function createWindow() {
+    console.log('[Main] Creating window...');
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -41,27 +42,40 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            webSecurity: true // Enable web security (media:// protocol is already registered as privileged)
+            webSecurity: true
         },
         icon: path.join(__dirname, '../public/icon.png')
     });
 
     if (isDev) {
         const devUrl = config.dev?.url || 'http://localhost:5173';
+        console.log('[Main] Loading dev URL:', devUrl);
         mainWindow.loadURL(devUrl);
         mainWindow.webContents.openDevTools();
     } else {
+        console.log('[Main] Loading production file');
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
 
     mainWindow.on('closed', () => {
+        console.log('[Main] Window closed');
         mainWindow = null;
+    });
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('[Main] Window finished loading');
+    });
+
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('[Main] Window failed to load:', errorCode, errorDescription);
     });
 }
 
 app.whenReady().then(() => {
+    console.log('[Main] App ready, setting up protocol...');
     // Handle media:// requests
     protocol.handle('media', (request) => {
+        console.log('[Main] Media request:', request.url);
         let url = request.url.replace('media://', '');
         let filePath = decodeURIComponent(url);
         if (filePath.match(/^\/?mnt\/[a-zA-Z]\//)) {
@@ -70,6 +84,7 @@ app.whenReady().then(() => {
         return net.fetch('file:///' + filePath);
     });
 
+    console.log('[Main] Protocol setup, creating window...');
     createWindow();
 
     // IPC Handlers
@@ -302,6 +317,76 @@ app.whenReady().then(() => {
             console.error('Failed to write log:', e);
             return false;
         }
+    });
+
+    ipcMain.handle('system:get-api-config', async () => {
+        const config = loadConfig();
+        // Priority: Config -> WebUI Lock File -> Default
+        let port = 7860;
+        let host = '127.0.0.1';
+        let url = '';
+
+        // 1. Check Config
+        if (config.api) {
+            if (config.api.url) return { url: config.api.url }; // Return full URL if explicitly set
+            if (config.api.port) port = config.api.port;
+            if (config.api.host) host = config.api.host;
+        }
+
+        // 2. Check Lock File (Dynamic Port)
+        try {
+            const projectRoot = path.resolve(__dirname, '..');
+            const projectsDir = path.resolve(projectRoot, '..');
+            const locks = [
+                path.join(projectsDir, 'image-scoring', 'webui.lock'),
+                path.join(projectsDir, 'image-scoring', 'webui-debug.lock') // Check debug lock too
+            ];
+
+            for (const lockFile of locks) {
+                if (fs.existsSync(lockFile)) {
+                    const content = await fs.promises.readFile(lockFile, 'utf8');
+                    const data = JSON.parse(content);
+                    if (data && data.port) {
+                        port = data.port;
+                        console.log(`[Main] Found active WebUI at port ${port} from ${path.basename(lockFile)}`);
+                        break;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[Main] Failed to read API lock file:', e);
+        }
+
+        return { url: `http://${host}:${port}` };
+    });
+
+    // Deprecated: keeping for backward compatibility if needed, but get-api-config is preferred
+    ipcMain.handle('system:get-api-port', async () => {
+        try {
+            // Try to find image-scoring sibling directory
+            // Assuming layout:
+            // /Projects/electron-image-scoring/dist-electron/main.js
+            // /Projects/image-scoring/webui.lock
+
+            // Go up from dist-electron to project root, then up to Projects, then down to image-scoring
+            const projectRoot = path.resolve(__dirname, '..');
+            const projectsDir = path.resolve(projectRoot, '..');
+            const lockFile = path.join(projectsDir, 'image-scoring', 'webui.lock');
+
+            console.log('[Main] Looking for API lock file at:', lockFile);
+
+            if (fs.existsSync(lockFile)) {
+                const content = await fs.promises.readFile(lockFile, 'utf8');
+                const data = JSON.parse(content);
+                console.log('[Main] Found API lock file:', data);
+                if (data && data.port) {
+                    return data.port;
+                }
+            }
+        } catch (e) {
+            console.error('[Main] Failed to read API port:', e);
+        }
+        return 7860; // Default fallback
     });
 });
 

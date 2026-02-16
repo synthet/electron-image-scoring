@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('electron', {
     rebuildStackCache: () => ipcRenderer.invoke('db:rebuild-stack-cache'),
     log: (level: string, message: string, data?: any) => ipcRenderer.invoke('debug:log', { level, message, data, timestamp: Date.now() }),
     extractNefPreview: (filePath: string) => ipcRenderer.invoke('nef:extract-preview', filePath),
+    getApiPort: () => ipcRenderer.invoke('system:get-api-port'),
+    getApiConfig: () => ipcRenderer.invoke('system:get-api-config'),
 });

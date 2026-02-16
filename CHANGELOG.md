@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.21.0] - 2026-02-15
+
+### Added
+- **WebSocket integration**: Implemented `WebSocketService` to handle real-time event broadcasting from the Python scoring pipeline.
+- **Notification System**: Added `NotificationTray` component and `useNotificationStore` for displaying system-wide alerts (success, info, warning, error).
+- **Real-time Event Handling**: Added listeners in `App.tsx` for `stack_created`, `folder_discovered`, `job_started`, and `job_completed`.
+- **IPC Enhancement**: Added `system:get-api-config` handler for dynamic API port discovery via lock files.
+
+### Changed
+- Improved path conversion for WSL-to-Windows paths in `electron/main.ts`.
+- Refactored `App.tsx` to handle dynamic stack cache rebuilding on external events.
+
 ## [3.20.0] - 2026-02-15
 
 ### Added

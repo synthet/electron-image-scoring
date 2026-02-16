@@ -21,7 +21,11 @@ declare global {
                 buffer?: number[];
                 fallback?: boolean;
                 error?: string;
+                fallback?: boolean;
+                error?: string;
             }>;
+            getApiPort: () => Promise<number>;
+            getApiConfig: () => Promise<{ url: string }>;
         };
     };
 }

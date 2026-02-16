@@ -8,5 +8,8 @@
     },
     "dev": {
         "url": "http://localhost:5173"
+    },
+    "api": {
+        "url": "http://127.0.0.1:7860"
     }
 }

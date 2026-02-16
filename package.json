@@ -1,22 +1,27 @@
 {
   "name": "electron-gallery",
   "private": true,
-  "version": "3.20.0",
+  "version": "3.21.0",
+  "description": "A high-performance image gallery with scoring capabilities",
+  "author": "Electron Image Scoring Team",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"npm run dev:web\" \"npm run dev:electron\"",
+    "dev": "concurrently --kill-others-on-fail \"npm run db:start\" \"npm run dev:web\" \"npm run dev:electron\"",
     "dev:web": "vite",
     "dev:electron": "wait-on tcp:5173 && tsc -p electron/tsconfig.json && cross-env ELECTRON_IS_DEV=1 electron .",
+    "db:start": "powershell -ExecutionPolicy Bypass -File scripts/start_db.ps1",
     "build": "tsc -p electron/tsconfig.json && tsc -b && vite build && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "build": {
+    "forceCodeSigning": false,
     "appId": "com.electron.gallery",
     "productName": "Electron Image Gallery",
     "win": {
       "icon": "public/icon.png",
-      "target": "nsis"
+      "target": "nsis",
+      "verifyUpdateCodeSignature": false
     },
     "directories": {
       "output": "dist-electron"

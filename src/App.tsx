@@ -298,7 +298,16 @@ function App() {
         </div>
       }
       content={
-        <div style={{ height: '100%', overflow: 'hidden' }}>
+        <div style={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
+          {stackImagesLoading && (
+            <div style={{
+              position: 'absolute', top: 10, right: 10, zIndex: 10,
+              padding: '4px 12px', background: 'rgba(0, 0, 0, 0.7)',
+              color: 'white', borderRadius: 4, fontSize: '0.9em'
+            }}>
+              Loading...
+            </div>
+          )}
           <GalleryGrid
             images={currentImages}
             onSelect={handleImageClick}

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.20.0] - 2026-02-15
+
+### Added
+- **New Skills**: Added `serena-integration` (for Serena MCP usage) and `scoring-pipeline` (core architecture docs) to `.agent/skills/`.
+- **New Workflow**: Added `consult_serena` workflow for structured agent interactions.
+
+### Removed
+- Removed deprecated `agent-mailbox` skill and related workflows (`check_agent_mailbox`, `send_agent_mailbox`) to simplify agent tooling.
+
+### Changed
+- Refactored `src/App.tsx` and `electron/main.ts` to support improved agent integration and clean up unused code.
+
 ## [3.19.0] - 2026-02-14
 
 ### Changed

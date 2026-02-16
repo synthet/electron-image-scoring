@@ -43,6 +43,7 @@ function createWindow() {
             nodeIntegration: false,
             webSecurity: true // Enable web security (media:// protocol is already registered as privileged)
         },
+        icon: path.join(__dirname, '../public/icon.png')
     });
 
     if (isDev) {

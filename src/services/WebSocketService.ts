@@ -11,7 +11,7 @@ class WebSocketService {
     private url: string = '';
     private reconnectInterval: number = 3000;
     private handlers: Map<string, Set<MessageHandler>> = new Map();
-    private isConnected: boolean = false;
+
 
     constructor() {
     }
@@ -30,7 +30,7 @@ class WebSocketService {
 
             this.ws.onopen = () => {
                 console.log('[WebSocket] Connected');
-                this.isConnected = true;
+
             };
 
             this.ws.onmessage = (event) => {
@@ -44,7 +44,7 @@ class WebSocketService {
 
             this.ws.onclose = () => {
                 console.log('[WebSocket] Disconnected');
-                this.isConnected = false;
+
                 setTimeout(() => this.connect(), this.reconnectInterval);
             };
 

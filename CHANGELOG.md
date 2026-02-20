@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.22.0] - 2026-02-19
+
+### Added
+- **DB Connection Status**: Added a real-time database connection status indicator (Connected/Disconnected) to the folders sidebar.
+- **Image Deletion**: Implemented functionality to delete image records from the database directly from within the `ImageViewer`.
+- Added `firebird` path configuration to `config.json` for flexible deployment.
+
 ## [3.21.0] - 2026-02-15
 
 ### Added

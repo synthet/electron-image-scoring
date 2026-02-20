@@ -1,7 +1,7 @@
 {
   "name": "electron-gallery",
   "private": true,
-  "version": "3.21.0",
+  "version": "3.22.0",
   "description": "A high-performance image gallery with scoring capabilities",
   "author": "Electron Image Scoring Team",
   "main": "dist-electron/main.js",
@@ -10,7 +10,7 @@
     "dev:web": "vite",
     "dev:electron": "wait-on tcp:5173 && tsc -p electron/tsconfig.json && cross-env ELECTRON_IS_DEV=1 electron .",
     "db:start": "powershell -ExecutionPolicy Bypass -File scripts/start_db.ps1",
-    "build": "tsc -p electron/tsconfig.json && tsc -b && vite build && electron-builder",
+    "build": "tsc -p electron/tsconfig.json && tsc -b && vite build && electron-packager . --overwrite --platform=win32 --arch=x64 --out=release-builds --prune=true",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -52,7 +52,8 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^40.1.0",
-    "electron-builder": "^26.7.0",
+    "electron-builder": "24.13.3",
+    "electron-packager": "^17.1.2",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

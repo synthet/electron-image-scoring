@@ -4,6 +4,7 @@ declare global {
     interface Window {
         electron: {
             ping: () => Promise<string>;
+            checkDbConnection: () => Promise<boolean>;
             getImageCount: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<number | { error: string }>;
             getImages: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<any[]>;
             getImageDetails: (id: number) => Promise<any>;

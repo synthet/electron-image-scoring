@@ -32,7 +32,7 @@ function App() {
   const [activeStackInfo, setActiveStackInfo] = useState<{ stackId: number; imageCount: number } | null>(null);
   const [cacheBuilt, setCacheBuilt] = useState(false);
 
-  const { images, loadMore, totalCount } = useImages(50, selectedFolderId, filters);
+  const { images, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, filters);
   const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount } = useStacks(50, selectedFolderId, filters);
 
   const [stackImages, setStackImages] = useState<any[]>([]);
@@ -171,6 +171,25 @@ function App() {
     }
   };
 
+  const handleImageDelete = (id: number) => {
+    // If inside a stack, remove from stackImages
+    if (activeStackId) {
+      setStackImages(prev => prev.filter(img => img.id !== id));
+      // Also update the stack info count if we have it?
+      if (activeStackInfo) {
+        setActiveStackInfo(prev => prev ? ({ ...prev, imageCount: Math.max(0, prev.imageCount - 1) }) : null);
+      }
+    } else {
+      // Normal mode: remove from main images list
+      removeImage(id);
+    }
+    // Note: If we just deleted the LAST image in a stack, should we close the stack view?
+    // User logic: "stay at the same folder... just exit image details... go back to parent folder of this image"
+    // Since we are closing the viewer, we are back in the grid (which is the parent folder view or stack view).
+    // So just closing viewer + updating list is correct.
+    setOpeningImage(null);
+  };
+
   const handleSelectStack = (stack: any) => {
     if (stack.stack_id !== null && stack.stack_id !== undefined) {
       setActiveStackId(stack.stack_id);
@@ -257,7 +276,15 @@ function App() {
           <div style={{ padding: 10, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <h3 style={{ marginBottom: 10 }}>Folders</h3>
             <div style={{ marginBottom: 10, fontSize: '0.8em', color: '#888' }}>
-              <p>DB Status: Connected</p>
+              <p>DB Status:
+                <span style={{
+                  color: isConnected ? '#4caf50' : '#f44336',
+                  fontWeight: 'bold',
+                  marginLeft: 5
+                }}>
+                  {isConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </p>
             </div>
 
             <div style={{ padding: '0 0 10px 0', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -411,6 +438,7 @@ function App() {
                 allImages={currentImages}
                 currentIndex={currentImageIndex}
                 onNavigate={handleNavigateImage}
+                onDelete={handleImageDelete}
               />
             )}
           </div>

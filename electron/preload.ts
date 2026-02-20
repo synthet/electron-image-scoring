@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
     ping: () => ipcRenderer.invoke('ping'),
+    checkDbConnection: () => ipcRenderer.invoke('db:check-connection'),
     getImageCount: (options?: any) => ipcRenderer.invoke('db:get-image-count', options),
     getImages: (options?: any) => ipcRenderer.invoke('db:get-images', options),
     getImageDetails: (id: number) => ipcRenderer.invoke('db:get-image-details', id),

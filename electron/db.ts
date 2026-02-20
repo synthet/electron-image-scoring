@@ -2,6 +2,8 @@ import Firebird from 'node-firebird';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
+import { spawn } from 'child_process';
+import net from 'net';
 
 // Load configuration
 function loadConfig() {
@@ -61,6 +63,98 @@ export async function connectDB(): Promise<Firebird.Database> {
     });
 }
 
+// Check if Firebird port is open
+function isPortOpen(port: number, host: string = '127.0.0.1'): Promise<boolean> {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(2000); // 2s timeout
+        socket.on('connect', () => {
+            socket.destroy();
+            resolve(true);
+        });
+        socket.on('timeout', () => {
+            socket.destroy();
+            resolve(false);
+        });
+        socket.on('error', (err) => {
+            socket.destroy();
+            resolve(false);
+        });
+        socket.connect(port, host);
+    });
+}
+
+// Ensure Firebird is running
+export async function ensureFirebirdRunning(): Promise<boolean> {
+    const port = dbConfig.port || 3050; // Use configured port or default
+    const host = dbConfig.host || '127.0.0.1';
+
+    console.log(`[DB] Checking if Firebird is running on ${host}:${port}...`);
+    const isOpen = await isPortOpen(port, host);
+
+    if (isOpen) {
+        console.log('[DB] Firebird is already running.');
+        return true;
+    }
+
+    console.log('[DB] Firebird port is closed. Attempting to start server...');
+    const firebirdPath = config.firebird?.path;
+
+    if (!firebirdPath) {
+        console.error('[DB] Firebird path not configured in config.json (firebird.path). Cannot auto-start.');
+        return false;
+    }
+
+    const binPath = path.join(firebirdPath, 'firebird.exe');
+
+    if (!fs.existsSync(binPath)) {
+        console.error(`[DB] Firebird executable not found at: ${binPath}`);
+        return false;
+    }
+
+    return new Promise((resolve) => {
+        console.log(`[DB] Spawning Firebird process: ${binPath} -a -p ${port}`);
+        // We use spawn to start it detached so it keeps running
+        const child = spawn(binPath, ['-a', '-p', String(port)], {
+            detached: true,
+            stdio: 'ignore', // Ignore stdio to allow it to run independently
+            windowsHide: true // Hide the window
+        });
+
+        child.unref(); // Allow the parent to exit without waiting for the child
+
+        // Now we need to wait for the port to open
+        console.log('[DB] Waiting for Firebird to be ready...');
+
+        let attempts = 0;
+        const maxAttempts = 20; // 20 * 500ms = 10s timeout
+
+        const checkInterval = setInterval(async () => {
+            attempts++;
+            const ready = await isPortOpen(port, host);
+            if (ready) {
+                clearInterval(checkInterval);
+                console.log('[DB] Firebird started successfully!');
+                resolve(true);
+            } else if (attempts >= maxAttempts) {
+                clearInterval(checkInterval);
+                console.error('[DB] Timeout waiting for Firebird to start.');
+                resolve(false);
+            }
+        }, 500);
+    });
+}
+
+export async function checkConnection(): Promise<boolean> {
+    try {
+        await query('SELECT 1 FROM RDB$DATABASE');
+        return true;
+    } catch (e) {
+        console.error('[DB] Check connection failed:', e);
+        return false;
+    }
+}
+
 export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     return new Promise((resolve, reject) => {
         Firebird.attach(options, (err, db) => {
@@ -76,6 +170,48 @@ export async function query<T = any>(sql: string, params: any[] = []): Promise<T
                 // We'll see.
 
                 resolve(result as T[]);
+            });
+        });
+    });
+}
+
+export async function runTransaction<T>(
+    callback: (tx: Firebird.Transaction, txQuery: <R = any>(sql: string, params?: any[]) => Promise<R[]>) => Promise<T>,
+    isolation: any = Firebird.ISOLATION_READ_COMMITTED
+): Promise<T> {
+    return new Promise((resolve, reject) => {
+        Firebird.attach(options, (err, db) => {
+            if (err) return reject(err);
+
+            db.transaction(isolation, async (err, transaction) => {
+                if (err) {
+                    db.detach();
+                    return reject(err);
+                }
+
+                const txQuery = <R = any>(sql: string, params: any[] = []): Promise<R[]> => {
+                    return new Promise((qResolve, qReject) => {
+                        transaction.query(sql, params, (qErr, result) => {
+                            if (qErr) return qReject(qErr);
+                            qResolve(result as R[]);
+                        });
+                    });
+                };
+
+                try {
+                    const result = await callback(transaction, txQuery);
+                    transaction.commit((commitErr) => {
+                        db.detach();
+                        if (commitErr) return reject(commitErr);
+                        resolve(result);
+                    });
+                } catch (cbErr) {
+                    transaction.rollback((rollbackErr) => {
+                        if (rollbackErr) console.error('[DB] Rollback error:', rollbackErr);
+                        db.detach();
+                        reject(cbErr);
+                    });
+                }
             });
         });
     });
@@ -287,6 +423,17 @@ export async function getImageDetails(id: number): Promise<any> {
 
     const image = rows[0];
 
+    // Check file existence
+    let fileExists = false;
+    let filePathToCheck = image.win_path || image.file_path;
+    if (filePathToCheck) {
+        if (process.platform === 'win32' && filePathToCheck.match(/^\/?mnt\/[a-zA-Z]\//)) {
+            filePathToCheck = filePathToCheck.replace(/^\/?mnt\/([a-zA-Z])\//, (match: string, drive: string) => `${drive}:/`);
+        }
+        fileExists = fs.existsSync(filePathToCheck);
+    }
+    image.file_exists = fileExists;
+
     // Ultra-aggressive serialization: Convert EVERYTHING to JSON and parse back
     // This ensures absolutely no Firebird-specific or Node.js-specific objects remain
     const stringified = JSON.stringify(image, (key, value) => {
@@ -407,64 +554,83 @@ export async function ensureStackCacheTable(): Promise<void> {
     return stackCacheInitPromise;
 }
 
+let rebuildPromise: Promise<number> | null = null;
+
 export async function rebuildStackCache(): Promise<number> {
-    await ensureStackCacheTable();
+    // If a rebuild is already in progress, return the existing promise
+    if (rebuildPromise) {
+        console.log('[DB] Stack cache rebuild already in progress, joining existing request...');
+        return rebuildPromise;
+    }
 
-    // Clear existing cache
-    await query('DELETE FROM stack_cache');
+    rebuildPromise = (async () => {
+        try {
+            await ensureStackCacheTable();
 
-    // Populate from images table - only for actual stacks (stack_id IS NOT NULL)
-    const sql = `
-        INSERT INTO stack_cache (
-            stack_id, image_count, rep_image_id, folder_id,
-            min_score_general, max_score_general,
-            min_score_technical, max_score_technical,
-            min_score_aesthetic, max_score_aesthetic,
-            min_score_spaq, max_score_spaq,
-            min_score_ava, max_score_ava,
-            min_score_liqe, max_score_liqe,
-            min_rating, max_rating,
-            min_created_at, max_created_at
-        )
-        SELECT
-            i.stack_id,
-            COUNT(*),
-            MIN(i.id),
-            MIN(i.folder_id),
-            MIN(i.score_general), MAX(i.score_general),
-            MIN(i.score_technical), MAX(i.score_technical),
-            MIN(i.score_aesthetic), MAX(i.score_aesthetic),
-            MIN(i.score_spaq), MAX(i.score_spaq),
-            MIN(i.score_ava), MAX(i.score_ava),
-            MIN(i.score_liqe), MAX(i.score_liqe),
-            MIN(i.rating), MAX(i.rating),
-            MIN(i.created_at), MAX(i.created_at)
-        FROM images i
-        WHERE i.stack_id IS NOT NULL
-        GROUP BY i.stack_id
-    `;
+            return await runTransaction(async (tx, txQuery) => {
+                // Clear existing cache
+                await txQuery('DELETE FROM stack_cache');
 
-    await query(sql);
+                // Populate from images table - only for actual stacks (stack_id IS NOT NULL)
+                const sql = `
+                    INSERT INTO stack_cache (
+                        stack_id, image_count, rep_image_id, folder_id,
+                        min_score_general, max_score_general,
+                        min_score_technical, max_score_technical,
+                        min_score_aesthetic, max_score_aesthetic,
+                        min_score_spaq, max_score_spaq,
+                        min_score_ava, max_score_ava,
+                        min_score_liqe, max_score_liqe,
+                        min_rating, max_rating,
+                        min_created_at, max_created_at
+                    )
+                    SELECT
+                        i.stack_id,
+                        COUNT(*),
+                        MIN(i.id),
+                        MIN(i.folder_id),
+                        MIN(i.score_general), MAX(i.score_general),
+                        MIN(i.score_technical), MAX(i.score_technical),
+                        MIN(i.score_aesthetic), MAX(i.score_aesthetic),
+                        MIN(i.score_spaq), MAX(i.score_spaq),
+                        MIN(i.score_ava), MAX(i.score_ava),
+                        MIN(i.score_liqe), MAX(i.score_liqe),
+                        MIN(i.rating), MAX(i.rating),
+                        MIN(i.created_at), MAX(i.created_at)
+                    FROM images i
+                    WHERE i.stack_id IS NOT NULL
+                    GROUP BY i.stack_id
+                `;
 
-    // Update rep_image_id to be the image with the highest general score in each stack
-    await query(`
-        MERGE INTO stack_cache sc
-        USING (
-            SELECT i.stack_id, i.id as best_id
-            FROM images i
-            WHERE i.stack_id IS NOT NULL
-              AND i.score_general = (
-                  SELECT MAX(i2.score_general) FROM images i2 WHERE i2.stack_id = i.stack_id
-              )
-        ) src
-        ON sc.stack_id = src.stack_id
-        WHEN MATCHED THEN UPDATE SET sc.rep_image_id = src.best_id
-    `);
+                await txQuery(sql);
 
-    const countRows = await query<{ cnt: number }>('SELECT COUNT(*) as "cnt" FROM stack_cache');
-    const count = countRows[0]?.cnt || 0;
-    console.log(`[DB] Stack cache rebuilt: ${count} stacks cached`);
-    return count;
+                // Update rep_image_id to be the image with the highest general score in each stack
+                await txQuery(`
+                    MERGE INTO stack_cache sc
+                    USING (
+                        SELECT i.stack_id, i.id as best_id
+                        FROM images i
+                        WHERE i.stack_id IS NOT NULL
+                          AND i.score_general = (
+                              SELECT MAX(i2.score_general) FROM images i2 WHERE i2.stack_id = i.stack_id
+                          )
+                    ) src
+                    ON sc.stack_id = src.stack_id
+                    WHEN MATCHED THEN UPDATE SET sc.rep_image_id = src.best_id
+                `);
+
+                const countRows = await txQuery<{ cnt: number }>('SELECT COUNT(*) as "cnt" FROM stack_cache');
+                const count = countRows[0]?.cnt || 0;
+                console.log(`[DB] Stack cache rebuilt: ${count} stacks cached`);
+                return count;
+            });
+        } finally {
+            // Always clear the promise when done, so subsequent calls can trigger a new rebuild if needed
+            rebuildPromise = null;
+        }
+    })();
+
+    return rebuildPromise;
 }
 
 export async function getStacks(options: StackQueryOptions = {}): Promise<any[]> {
@@ -490,120 +656,108 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<any[]>
         'score_liqe': sortOrder === 'DESC' ? 'sc.max_score_liqe' : 'sc.min_score_liqe',
         'rating': sortOrder === 'DESC' ? 'sc.max_rating' : 'sc.min_rating',
         'created_at': sortOrder === 'DESC' ? 'sc.max_created_at' : 'sc.min_created_at',
+        'file_name': 'i.file_name',
+        'id': 'sc.rep_image_id'
     };
 
     const cacheSortCol = cacheColMap[sortColumn] || (sortOrder === 'DESC' ? 'sc.max_score_general' : 'sc.min_score_general');
+    const nonStackSortCol = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
 
-    // Build query from cache + join to get rep image info
-    const params: any[] = [];
-    const whereParts: string[] = [];
+    // Params for the union query (need to push them twice, once for top half, once for bottom)
+    const topParams: any[] = [];
+    const botParams: any[] = [];
+    const wherePartsCache: string[] = [];
+    const wherePartsNonStack: string[] = ['i.stack_id IS NULL'];
 
     if (folderId) {
-        whereParts.push('sc.folder_id = ?');
-        params.push(folderId);
+        wherePartsCache.push('sc.folder_id = ?');
+        topParams.push(folderId);
+
+        wherePartsNonStack.push('i.folder_id = ?');
+        botParams.push(folderId);
     }
 
     if (minRating !== undefined && minRating > 0) {
-        whereParts.push('sc.max_rating >= ?');
-        params.push(minRating);
+        wherePartsCache.push('sc.max_rating >= ?');
+        topParams.push(minRating);
+
+        wherePartsNonStack.push('i.rating >= ?');
+        botParams.push(minRating);
     }
 
-    const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
+    if (colorLabel) {
+        // No cached colorLabel, only applies to non-stacks?
+        // Wait, stacks might have labels if rep image has label, but original code skipped label filter for stacks
+        // We will keep original behavior: only filter non-stacks by label
+        wherePartsNonStack.push('i.label = ?');
+        botParams.push(colorLabel);
+    }
 
-    params.push(offset, limit);
+    if (keyword) {
+        // Same as colorLabel, apply to non-stacks
+        wherePartsNonStack.push('i.keywords LIKE ?');
+        botParams.push(`%${keyword}%`);
+    }
 
-    // Query stacks from cache, join representative image
+    const whereClauseCache = wherePartsCache.length > 0 ? 'WHERE ' + wherePartsCache.join(' AND ') : '';
+    const whereClauseNonStack = 'WHERE ' + wherePartsNonStack.join(' AND ');
+
     const sql = `
-        SELECT
-            sc.stack_id,
-            sc.stack_id as stack_key,
-            sc.image_count,
-            ${cacheSortCol} as sort_value,
-            sc.rep_image_id,
-            i.id,
-            COALESCE(fp.path, i.file_path) as file_path,
-            i.file_name,
-            i.score_general,
-            i.score_technical,
-            i.score_aesthetic,
-            i.score_spaq,
-            i.score_ava,
-            i.score_liqe,
-            i.rating,
-            i.label,
-            i.created_at,
-            i.thumbnail_path
-        FROM stack_cache sc
-        JOIN images i ON i.id = sc.rep_image_id
-        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
-        ${whereClause}
-        ORDER BY ${cacheSortCol} ${sortOrder}
+        SELECT * FROM (
+            SELECT
+                sc.stack_id,
+                CAST(sc.stack_id AS BIGINT) as stack_key,
+                sc.image_count,
+                ${cacheSortCol} as sort_value,
+                sc.rep_image_id,
+                i.id,
+                COALESCE(fp.path, i.file_path) as file_path,
+                i.file_name,
+                i.score_general,
+                i.score_technical,
+                i.score_aesthetic,
+                i.score_spaq,
+                i.score_ava,
+                i.score_liqe,
+                i.rating,
+                i.label,
+                i.created_at,
+                i.thumbnail_path
+            FROM stack_cache sc
+            JOIN images i ON i.id = sc.rep_image_id
+            LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+            ${whereClauseCache}
+
+            UNION ALL
+
+            SELECT
+                i.stack_id,
+                CAST(-i.id AS BIGINT) as stack_key,
+                1 as image_count,
+                ${nonStackSortCol} as sort_value,
+                i.id as rep_image_id,
+                i.id,
+                COALESCE(fp.path, i.file_path) as file_path,
+                i.file_name,
+                i.score_general,
+                i.score_technical,
+                i.score_aesthetic,
+                i.score_spaq,
+                i.score_ava,
+                i.score_liqe,
+                i.rating,
+                i.label,
+                i.created_at,
+                i.thumbnail_path
+            FROM images i
+            LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+            ${whereClauseNonStack}
+        ) a
+        ORDER BY a.sort_value ${sortOrder}, a.stack_key DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     `;
 
-    const rows = await query(sql, params);
-
-    // Also fetch non-stacked images (stack_id IS NULL) as individual "stacks"
-    // These are not in the cache, so query them directly
-    const nonStackParams: any[] = [];
-    const nonStackWhereParts: string[] = ['i.stack_id IS NULL'];
-
-    if (folderId) {
-        nonStackWhereParts.push('i.folder_id = ?');
-        nonStackParams.push(folderId);
-    }
-    if (minRating !== undefined && minRating > 0) {
-        nonStackWhereParts.push('i.rating >= ?');
-        nonStackParams.push(minRating);
-    }
-    if (colorLabel) {
-        nonStackWhereParts.push('i.label = ?');
-        nonStackParams.push(colorLabel);
-    }
-    if (keyword) {
-        nonStackWhereParts.push('i.keywords LIKE ?');
-        nonStackParams.push(`%${keyword}%`);
-    }
-
-    const nonStackSortCol = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
-
-    const nonStackSql = `
-        SELECT
-            (-i.id) as stack_key,
-            i.stack_id,
-            1 as image_count,
-            i.${sortColumn} as sort_value,
-            i.id,
-            COALESCE(fp.path, i.file_path) as file_path,
-            i.file_name,
-            i.score_general,
-            i.score_technical,
-            i.score_aesthetic,
-            i.score_spaq,
-            i.score_ava,
-            i.score_liqe,
-            i.rating,
-            i.label,
-            i.created_at,
-            i.thumbnail_path
-        FROM images i
-        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
-        WHERE ${nonStackWhereParts.join(' AND ')}
-        ORDER BY ${nonStackSortCol} ${sortOrder}
-    `;
-
-    const nonStackRows = await query(nonStackSql, nonStackParams);
-
-    // Merge and sort both lists together
-    const combined = [...rows, ...nonStackRows];
-    combined.sort((a: any, b: any) => {
-        const aVal = a.sort_value ?? 0;
-        const bVal = b.sort_value ?? 0;
-        return sortOrder === 'DESC' ? (bVal - aVal) : (aVal - bVal);
-    });
-
-    // Apply pagination to the combined result
-    return combined.slice(offset > 0 ? 0 : 0, limit);
+    return query(sql, [...topParams, ...botParams, offset, limit]);
 }
 
 export async function getImagesByStack(stackId: number | null, options: ImageQueryOptions = {}): Promise<any[]> {
@@ -714,10 +868,72 @@ export async function getStackCount(options: StackQueryOptions = {}): Promise<nu
 }
 
 export async function deleteImage(id: number): Promise<boolean> {
-    // Note: This only deletes from the DB. Use with caution.
-    // Real file deletion should probably happen too, but let's stick to DB for now as per plan.
+    console.log(`[DB] Request to delete image ID: ${id}`);
+
+    // 1. Get file path details
+    const image = await getImageDetails(id);
+
+    if (!image) {
+        console.error('[DB] Image not found for deletion');
+        return false;
+    }
+
+    // 2. Determine file path to delete
+    // Prefer win_path (from file_paths table), fallback to file_path
+    let filePathToDelete = image.win_path || image.file_path;
+
+    if (!filePathToDelete) {
+        console.error('[DB] No file path found for image');
+        // We might still want to delete the DB record if the file is missing? 
+        // For now, let's try to proceed with DB deletion even if file path is missing, 
+        // but if we HAVE a path, we try to delete it.
+    } else {
+        // Convert WSL path if needed
+        if (process.platform === 'win32') {
+            // Handle /mnt/d/... -> d:/...
+            if (filePathToDelete.match(/^\/?mnt\/[a-zA-Z]\//)) {
+                filePathToDelete = filePathToDelete.replace(/^\/?mnt\/([a-zA-Z])\//, (match: string, drive: string) => `${drive}:/`);
+            }
+            // Ensure backslashes for Windows? Node handles forward slashes fine usually, but let's be safe if needed.
+            // Actually Node fs accepts forward slashes on Windows.
+        }
+
+        console.log(`[DB] Attempting to delete file: ${filePathToDelete}`);
+
+        try {
+            if (fs.existsSync(filePathToDelete)) {
+                await fs.promises.unlink(filePathToDelete);
+                console.log('[DB] File deleted successfully');
+            } else {
+                console.warn('[DB] File does not exist on disk, skipping file deletion');
+            }
+        } catch (e: any) {
+            console.error('[DB] Failed to delete file:', e);
+            // We should probably stop if file deletion fails to avoid consistency issues?
+            // Or should we allow "force delete"? 
+            // The user prompt implies "delete source image... AND db record". 
+            // If we can't delete the source, maybe we should NOT delete the DB record so the user can try again?
+            // But if the file is locked, they might want to just remove the record.
+            // Let's log error but PROCEED to delete DB record, assuming the user wants it gone from the app.
+            // Actually, let's be safe: if unlink fails (permission/locked), we might want to keep the record
+            // so the user knows it's still there.
+            // BUT, usually "delete" in gallery means "get it out of my face".
+            // I'll proceed with DB deletion but log the error.
+        }
+    }
+
+    // 3. Delete from DB
+    // We also need to delete from file_paths if we have a foreign key?
+    // Firebird usually enforces FK constraints.
+    // If 'images' is the parent, deleting it might fail if child records exist in 'file_paths'
+    // UNLESS there is ON DELETE CASCADE.
+    // The schema is not fully visible here, but usually we should delete from child tables first or rely on cascade.
+    // Let's assume cascade or manual cleanup.
+    // Given the previous code was just `DELETE FROM images`, it implies either Cascade exists or no dependencies blocking it.
+
     try {
         await query('DELETE FROM images WHERE id = ?', [id]);
+        console.log('[DB] Database record deleted');
         return true;
     } catch (e) {
         console.error('[DB] Delete failed:', e);

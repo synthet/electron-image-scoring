@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-electron
+release-builds/
+release-builds-v2/
 *.local
 
 # Editor directories and files
@@ -31,3 +34,10 @@ feed.json
 status.json
 register_payload.json
 dm_check.json
+
+# Local config
+config.json
+
+# Scratch logs
+git_log.txt
+git_status.txt

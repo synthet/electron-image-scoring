@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw } from 'lucide-react';
+import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw, AlertTriangle } from 'lucide-react';
 
 interface Image {
     id: number;
@@ -8,10 +8,22 @@ interface Image {
     score_general: number;
     score_technical: number;
     score_aesthetic: number;
+    score_spaq: number;
+    score_ava: number;
+    score_liqe: number;
     rating: number;
     label: string | null;
     created_at?: string;
     thumbnail_path?: string;
+    title?: string;
+    description?: string;
+    keywords?: string;
+    stack_id?: number;
+    burst_uuid?: string;
+    job_id?: string;
+    folder_id?: number;
+    win_path?: string;
+    file_exists?: boolean;
 }
 
 interface ImageViewerProps {
@@ -20,6 +32,7 @@ interface ImageViewerProps {
     allImages?: Image[];
     currentIndex?: number;
     onNavigate?: (newIndex: number) => void;
+    onDelete?: (id: number) => void;
 }
 
 const isWebSafe = (filename: string) => {
@@ -31,7 +44,6 @@ const isRaw = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     return ['nef', 'nrw', 'cr2', 'cr3', 'arw', 'orf', 'rw2', 'dng'].includes(ext);
 };
-
 
 const ScoreBar = ({ label, value, color = '#ff9800' }: { label: string, value: number, color?: string }) => (
     <div style={{ marginBottom: 10 }}>
@@ -50,9 +62,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     onClose,
     allImages = [],
     currentIndex = 0,
-    onNavigate
+    onNavigate,
+    onDelete
 }) => {
-    const [image, setImage] = React.useState<any>(initialImage);
+    const [image, setImage] = React.useState<Image>(initialImage);
     const [detailsLoaded, setDetailsLoaded] = React.useState(false);
 
     useEffect(() => {
@@ -135,7 +148,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             if (success) {
                 setImage({ ...image, ...updates });
                 setIsEditing(false);
-                // Optionally refresh list or notify parent
             } else {
                 alert('Failed to save changes');
             }
@@ -147,16 +159,16 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     const handleDelete = async () => {
         if (!window.electron) return;
-        if (!confirm('Are you sure you want to delete this image from the database? This cannot be undone.')) return;
+        if (!confirm('Are you sure you want to delete this source image (NEF file) AND the database record? This cannot be undone.')) return;
 
         try {
             const success = await window.electron.deleteImage(image.id);
             if (success) {
-                onClose(); // Close viewer
-                // We should ideally reload the grid here. 
-                // A quick hack is to reload the window or trigger a callback.
-                // For now, let's just close. The user will see it gone on refresh.
-                window.location.reload();
+                if (onDelete) {
+                    onDelete(image.id);
+                } else {
+                    onClose();
+                }
             } else {
                 alert('Failed to delete image');
             }
@@ -327,6 +339,24 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <div style={{ marginTop: 5, fontSize: '0.8em', color: '#666' }}>
                         {dateStr}
                     </div>
+
+                    {image.file_exists === false && (
+                        <div style={{
+                            marginTop: 10,
+                            padding: 8,
+                            backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                            border: '1px solid #f57c00',
+                            borderRadius: 4,
+                            color: '#ffb74d',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: '0.9em'
+                        }}>
+                            <AlertTriangle size={16} color="#ffa726" />
+                            <span>Source file not found</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Edit Controls */}

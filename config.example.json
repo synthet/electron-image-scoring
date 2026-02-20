@@ -4,7 +4,7 @@
         "port": 3050,
         "user": "sysdba",
         "password": "masterkey",
-        "path": "d:\\Projects\\image-scoring\\SCORING_HISTORY.FDB"
+        "path": "../image-scoring/SCORING_HISTORY.FDB"
     },
     "dev": {
         "url": "http://localhost:5173"

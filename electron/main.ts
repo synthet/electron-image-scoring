@@ -71,8 +71,12 @@ function createWindow() {
     });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     console.log('[Main] App ready, setting up protocol...');
+
+    // Ensure DB is running
+    await db.ensureFirebirdRunning();
+
     // Handle media:// requests
     protocol.handle('media', (request) => {
         console.log('[Main] Media request:', request.url);
@@ -89,6 +93,10 @@ app.whenReady().then(() => {
 
     // IPC Handlers
     ipcMain.handle('ping', () => 'pong');
+
+    ipcMain.handle('db:check-connection', async () => {
+        return await db.checkConnection();
+    });
 
     ipcMain.handle('db:get-image-count', async (_, options) => {
         try {

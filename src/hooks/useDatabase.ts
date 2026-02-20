@@ -12,18 +12,36 @@ export function useDatabase() {
                 return;
             }
             try {
+                // First ping the main process
                 const res = await window.electron.ping();
-                if (res === 'pong') {
+                if (res !== 'pong') {
+                    throw new Error('Main process not responding');
+                }
+
+                // Then check actual DB connection
+                const dbConnected = await window.electron.checkDbConnection();
+                if (dbConnected) {
                     setIsConnected(true);
+                    setError(null);
+                } else {
+                    setIsConnected(false);
+                    setError("Database disconnected");
                 }
             } catch (e: any) {
+                setIsConnected(false);
                 setError(e.message);
             }
         };
         connect();
+
     }, []);
 
-    return { isConnected, error };
+    const checkConnection = async () => {
+        if (!window.electron) return false;
+        return await window.electron.checkDbConnection();
+    };
+
+    return { isConnected, error, checkConnection };
 }
 
 export function useImageCount() {
@@ -148,7 +166,13 @@ export function useImages(pageSize: number = 50, folderId?: number, filters?: an
     // We explicitly depend on the reset conditions. 
     // When the top effect resets offset to 0, this effect fires.
 
-    return { images, loading, hasMore, loadMore, totalCount };
+    // Remove image from state (e.g. after delete)
+    const removeImage = (id: number) => {
+        setImages(prev => prev.filter(img => img.id !== id));
+        setTotalCount(prev => Math.max(0, prev - 1));
+    };
+
+    return { images, loading, hasMore, loadMore, totalCount, removeImage };
 }
 
 export function useStacks(pageSize: number = 50, folderId?: number, filters?: any) {

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.24.0] - 2026-02-26
+
+### Added
+- **Image export from viewer**: Export the currently displayed preview image to disk via the `File → Export` menu in the Electron shell.
+
+### Changed
+- Keywords display and editing in the image viewer now support inline chips with add/remove behavior while keeping the `keywords` field in sync with saved metadata.
+
 ## [3.23.0] - 2026-02-26
 
 ### Added

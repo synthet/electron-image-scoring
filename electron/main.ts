@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, net, Menu, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -12,6 +12,84 @@ import { nefExtractor } from './nefExtractor';
 // }
 
 let mainWindow: BrowserWindow | null = null;
+let currentExportImageContext: { imageBytes: number[]; mimeType: string; fileName: string } | null = null;
+
+function getDialogWindow(): BrowserWindow | null {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused && !focused.isDestroyed()) return focused;
+    return (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : null;
+}
+
+function showMessageBox(options: Electron.MessageBoxOptions) {
+    const win = getDialogWindow();
+    return win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options);
+}
+
+function showSaveDialog(options: Electron.SaveDialogOptions) {
+    const win = getDialogWindow();
+    return win ? dialog.showSaveDialog(win, options) : dialog.showSaveDialog(options);
+}
+
+const exportCurrentImage = async () => {
+    if (!currentExportImageContext?.imageBytes?.length) {
+        await showMessageBox({
+            type: 'info',
+            title: 'Export',
+            message: 'No image preview is currently available to export.',
+        });
+        return;
+    }
+
+    const defaultName = currentExportImageContext.fileName || 'export.jpg';
+    const saveResult = await showSaveDialog({
+        title: 'Export',
+        defaultPath: defaultName,
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+        return;
+    }
+
+    await fs.promises.writeFile(saveResult.filePath, Buffer.from(currentExportImageContext.imageBytes));
+    await showMessageBox({
+        type: 'info',
+        title: 'Export',
+        message: `Image exported to:\n${saveResult.filePath}`,
+    });
+};
+
+const rebuildApplicationMenu = () => {
+    const menu = Menu.buildFromTemplate([
+        {
+            label: 'File',
+            submenu: [
+                {
+                    label: 'Export',
+                    enabled: !!currentExportImageContext?.imageBytes?.length,
+                    click: async () => {
+                        try {
+                            await exportCurrentImage();
+                        } catch (e: any) {
+                            console.error('[Main] Export image error:', e);
+                            await showMessageBox({
+                                type: 'error',
+                                title: 'Export Failed',
+                                message: e?.message || 'Failed to export image.',
+                            });
+                        }
+                    }
+                },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        },
+        { role: 'editMenu' },
+        { role: 'viewMenu' },
+        { role: 'windowMenu' },
+    ]);
+
+    Menu.setApplicationMenu(menu);
+};
 
 // Register secure media protocol
 protocol.registerSchemesAsPrivileged([
@@ -90,6 +168,7 @@ app.whenReady().then(async () => {
 
     console.log('[Main] Protocol setup, creating window...');
     createWindow();
+    rebuildApplicationMenu();
 
     // IPC Handlers
     ipcMain.handle('ping', () => 'pong');
@@ -314,6 +393,12 @@ app.whenReady().then(async () => {
                 error: e.message
             };
         }
+    });
+
+    ipcMain.handle('export:set-current-image-context', async (_, context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => {
+        currentExportImageContext = context;
+        rebuildApplicationMenu();
+        return true;
     });
 
     ipcMain.handle('debug:log', async (_, { level, message, data, timestamp }) => {

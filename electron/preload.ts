@@ -19,4 +19,6 @@ contextBridge.exposeInMainWorld('electron', {
     extractNefPreview: (filePath: string) => ipcRenderer.invoke('nef:extract-preview', filePath),
     getApiPort: () => ipcRenderer.invoke('system:get-api-port'),
     getApiConfig: () => ipcRenderer.invoke('system:get-api-config'),
+    setCurrentExportImageContext: (context: { imageBytes: number[]; mimeType: string; fileName: string } | null) =>
+        ipcRenderer.invoke('export:set-current-image-context', context),
 });

@@ -28,6 +28,7 @@ declare global {
             }>;
             getApiPort: () => Promise<number>;
             getApiConfig: () => Promise<{ url: string }>;
+            setCurrentExportImageContext: (context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => Promise<boolean>;
         };
     };
 }

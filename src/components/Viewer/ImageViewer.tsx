@@ -120,7 +120,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         title: '',
         description: '',
         rating: 0,
-        label: ''
+        label: '',
+        keywords: ''
     });
 
     useEffect(() => {
@@ -129,7 +130,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 title: image.title || '',
                 description: image.description || '',
                 rating: image.rating || 0,
-                label: image.label || 'None'
+                label: image.label || 'None',
+                keywords: image.keywords || ''
             });
         }
     }, [isEditing, image]);
@@ -142,7 +144,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 title: editForm.title,
                 description: editForm.description,
                 rating: editForm.rating,
-                label: editForm.label
+                label: editForm.label,
+                keywords: editForm.keywords
             };
             const success = await window.electron.updateImageDetails(image.id, updates);
             if (success) {
@@ -248,6 +251,70 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     const src = previewSrc;
 
+    const buildExportPayload = async () => {
+        if (!src) {
+            return { error: 'No preview loaded yet.' };
+        }
+
+        try {
+            const response = await fetch(src);
+            const blob = await response.blob();
+            const buffer = await blob.arrayBuffer();
+            const bytes = Array.from(new Uint8Array(buffer));
+            const mimeType = blob.type || 'image/jpeg';
+
+            const baseName = image.file_name.replace(/\.[^/.]+$/, '');
+            const suggestedFileName = mimeType.includes('jpeg') || mimeType.includes('jpg')
+                ? `${baseName}.jpg`
+                : image.file_name;
+
+            return {
+                bytes,
+                mimeType,
+                suggestedFileName
+            };
+        } catch (e) {
+            console.error('Failed to read displayed preview bytes:', e);
+            return { error: 'Could not read displayed preview bytes.' };
+        }
+    };
+
+    useEffect(() => {
+        let active = true;
+
+        const syncExportContext = async () => {
+            if (!window.electron) return;
+
+            if (!src) {
+                await window.electron.setCurrentExportImageContext(null);
+                return;
+            }
+
+            const payload = await buildExportPayload();
+            if (!active) return;
+
+            if ('error' in payload) {
+                await window.electron.setCurrentExportImageContext(null);
+                return;
+            }
+
+            await window.electron.setCurrentExportImageContext({
+                imageBytes: payload.bytes,
+                mimeType: payload.mimeType,
+                fileName: payload.suggestedFileName,
+            });
+        };
+
+        syncExportContext();
+
+        return () => {
+            active = false;
+            if (window.electron) {
+                void window.electron.setCurrentExportImageContext(null);
+            }
+        };
+    }, [src, image.file_name]);
+
     // Format date
     const dateStr = image.created_at ? new Date(image.created_at).toLocaleString() : 'Unknown';
 
@@ -257,6 +324,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             image.label === 'Green' ? '#43a047' :
                 image.label === 'Blue' ? '#1e88e5' :
                     image.label === 'Purple' ? '#8e24aa' : 'None';
+    const keywordSource = isEditing ? editForm.keywords : image.keywords || '';
+    const keywordItems = keywordSource
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0);
 
     return (
         <div style={{
@@ -513,27 +585,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             {image.score_liqe > 0 && <ScoreBar label="LIQE" value={image.score_liqe} />}
                         </div>
 
-                        {/* Keywords / Tags */}
-                        {image.keywords && (
-                            <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
-                                <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>KEYWORDS</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {image.keywords.split(',').map((tag: string, i: number) => (
-                                        <span key={i} style={{
-                                            background: '#333',
-                                            padding: '2px 8px',
-                                            borderRadius: 4,
-                                            fontSize: '0.8em',
-                                            color: '#ccc'
-                                        }}>
-                                            {tag.trim()}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-
                         {/* Stack/Burst Info */}
                         {(image.stack_id || image.burst_uuid) && (
                             <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
@@ -578,6 +629,58 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                                     </div>
                                 )}
                             </div>
+                        </div>
+
+                        {/* Keywords / Tags (after Database Info) */}
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                            <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>KEYWORDS</div>
+                            {keywordItems.length > 0 ? (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {keywordItems.map((tag, i) => (
+                                        <div
+                                            key={`${tag}-${i}`}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 6,
+                                                background: '#333',
+                                                padding: '2px 8px',
+                                                borderRadius: 4,
+                                                fontSize: '0.8em',
+                                                color: '#ccc'
+                                            }}
+                                        >
+                                            <span>{tag}</span>
+                                            {isEditing && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const next = keywordItems.filter((t, idx) => !(t === tag && idx === i));
+                                                        setEditForm({
+                                                            ...editForm,
+                                                            keywords: next.join(', ')
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        border: 'none',
+                                                        background: 'transparent',
+                                                        color: '#888',
+                                                        cursor: 'pointer',
+                                                        padding: 0,
+                                                        fontSize: '0.9em',
+                                                        lineHeight: 1
+                                                    }}
+                                                    aria-label={`Remove keyword ${tag}`}
+                                                >
+                                                    ×
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '0.8em', color: '#666' }}>No keywords</div>
+                            )}
                         </div>
                     </>
                 )}

@@ -21,9 +21,18 @@ function loadConfig() {
 const config = loadConfig();
 const dbConfig = config.database || {};
 
+// Add test detection
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.VITEST;
+
 // Database options
 // If path is relative in config, it's relative to the project root (one level up from dist-electron)
-const rawDbPath = dbConfig.path || '../image-scoring/SCORING_HISTORY.FDB';
+let rawDbPath = dbConfig.path || '../image-scoring/SCORING_HISTORY.FDB';
+
+if (isTestEnv && rawDbPath.toUpperCase().includes('SCORING_HISTORY.FDB')) {
+    console.warn('[DB] Test environment detected! Switching to SCORING_HISTORY_TEST.FDB');
+    rawDbPath = rawDbPath.replace(/SCORING_HISTORY\.FDB/i, 'SCORING_HISTORY_TEST.FDB');
+}
+
 const dbPath = path.isAbsolute(rawDbPath)
     ? rawDbPath
     : path.resolve(path.join(__dirname, '..', rawDbPath));
@@ -320,6 +329,7 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<any[]>
             i.thumbnail_path
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+            AND POSITION('/thumbnails/' IN fp.path) = 0
         ${whereClause}
         ORDER BY ${sortColumn} ${sortOrder}
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -413,6 +423,7 @@ export async function getImageDetails(id: number): Promise<any> {
             fp.path as win_path
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+            AND POSITION('/thumbnails/' IN fp.path) = 0
         WHERE i.id = ?
     `;
     const rows = await query(sql, [id]);
@@ -422,6 +433,24 @@ export async function getImageDetails(id: number): Promise<any> {
     }
 
     const image = rows[0];
+
+    // Discard win_path if it's actually a thumbnail path (bad data in file_paths table)
+    if (image.win_path && image.file_name) {
+        const winExt = image.win_path.split('.').pop()?.toLowerCase();
+        const fileExt = image.file_name.split('.').pop()?.toLowerCase();
+        if (winExt && fileExt && winExt !== fileExt) {
+            console.log(`[DB] Discarding bad win_path for image ${id}: "${image.win_path}" (ext mismatch with ${image.file_name})`);
+            image.win_path = null;
+        }
+    }
+
+    // Construct win_path from file_path if missing and on Windows
+    if (!image.win_path && image.file_path && process.platform === 'win32') {
+        const converted = image.file_path.replace(/^\/?mnt\/([a-zA-Z])\//, (_m: string, d: string) => `${d.toUpperCase()}:/`);
+        if (converted !== image.file_path) {
+            image.win_path = converted;
+        }
+    }
 
     // Check file existence
     let fileExists = false;
@@ -462,7 +491,22 @@ export async function getImageDetails(id: number): Promise<any> {
 }
 
 export async function getFolders(): Promise<any[]> {
-    return query('SELECT id, path, parent_id, is_fully_scored FROM folders ORDER BY path ASC');
+    return query(`
+        SELECT f.id, f.path, f.parent_id, f.is_fully_scored,
+               (SELECT COUNT(1) FROM images i WHERE i.folder_id = f.id) as image_count
+        FROM folders f
+        ORDER BY f.path ASC
+    `);
+}
+
+export async function deleteFolder(id: number): Promise<boolean> {
+    try {
+        await query('DELETE FROM folders WHERE id = ?', [id]);
+        return true;
+    } catch (e) {
+        console.error('[DB] Failed to delete folder:', e);
+        return false;
+    }
 }
 
 export async function updateImageDetails(id: number, updates: any): Promise<boolean> {
@@ -726,6 +770,7 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<any[]>
             FROM stack_cache sc
             JOIN images i ON i.id = sc.rep_image_id
             LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                AND POSITION('/thumbnails/' IN fp.path) = 0
             ${whereClauseCache}
 
             UNION ALL
@@ -751,6 +796,7 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<any[]>
                 i.thumbnail_path
             FROM images i
             LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                AND POSITION('/thumbnails/' IN fp.path) = 0
             ${whereClauseNonStack}
         ) a
         ORDER BY a.sort_value ${sortOrder}, a.stack_key DESC
@@ -820,6 +866,7 @@ export async function getImagesByStack(stackId: number | null, options: ImageQue
             i.stack_id
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+            AND POSITION('/thumbnails/' IN fp.path) = 0
         ${whereClause}
         ORDER BY ${sortColumn} ${sortOrder}
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY

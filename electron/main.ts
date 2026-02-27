@@ -253,6 +253,16 @@ app.whenReady().then(async () => {
         }
     });
 
+    ipcMain.handle('db:delete-folder', async (_, id) => {
+        try {
+            console.log(`[Main] Deleting folder ID: ${id}`);
+            return await db.deleteFolder(id);
+        } catch (e: any) {
+            console.error('[Main] DB Error (delete folder):', e);
+            throw e;
+        }
+    });
+
     ipcMain.handle('nef:extract-preview', async (_, filePath: string) => {
         try {
             console.log(`[Main] NEF preview requested for: ${filePath}`);

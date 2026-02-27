@@ -10,6 +10,7 @@ declare global {
             getImageDetails: (id: number) => Promise<any>;
             updateImageDetails: (id: number, updates: any) => Promise<boolean>;
             deleteImage: (id: number) => Promise<boolean>;
+            deleteFolder: (id: number) => Promise<boolean>;
             getFolders: () => Promise<any[]>;
             getKeywords: () => Promise<string[]>;
             getStacks: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<any[]>;

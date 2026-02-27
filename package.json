@@ -1,7 +1,7 @@
 {
   "name": "electron-gallery",
   "private": true,
-  "version": "3.22.0",
+  "version": "3.23.0",
   "description": "A high-performance image gallery with scoring capabilities",
   "author": "Electron Image Scoring Team",
   "main": "dist-electron/main.js",
@@ -12,7 +12,8 @@
     "db:start": "powershell -ExecutionPolicy Bypass -File scripts/start_db.ps1",
     "build": "tsc -p electron/tsconfig.json && tsc -b && vite build && electron-packager . --overwrite --platform=win32 --arch=x64 --out=release-builds --prune=true",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:db": "cd ../image-scoring && python scripts/setup_test_db.py"
   },
   "build": {
     "forceCodeSigning": false,

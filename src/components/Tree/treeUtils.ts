@@ -3,6 +3,8 @@ export interface Folder {
     path: string;
     parent_id: number | null;
     is_fully_scored: number;
+    image_count: number;
+    total_image_count?: number;
     title?: string;
     children?: Folder[];
 }
@@ -34,14 +36,21 @@ export function buildFolderTree(folders: any[]): Folder[] {
         }
     });
 
-    // 3. Sort children
-    const sort = (nodes: Folder[]) => {
+    // 3. Sort children and compute total_image_count
+    const processNode = (nodes: Folder[]): number => {
         nodes.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        let totalSum = 0;
         nodes.forEach(n => {
-            if (n.children && n.children.length > 0) sort(n.children);
+            let childSum = 0;
+            if (n.children && n.children.length > 0) {
+                childSum = processNode(n.children);
+            }
+            n.total_image_count = (n.image_count || 0) + childSum;
+            totalSum += n.total_image_count;
         });
+        return totalSum;
     };
 
-    sort(roots);
+    processNode(roots);
     return roots;
 }

@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.23.0] - 2026-02-26
+
+### Added
+- **Folder deletion**: Remove empty folders from the database via delete button in the folder tree (database records only; files on disk are not removed).
+- **MCP Firebird integration**: Added `.cursor/rules/mcp-firebird.mdc` rule and MCP config for database diagnostics.
+- **mcp-server**: New MCP server package for Firebird tooling.
+
+### Changed
+- Database queries now exclude thumbnail paths from `file_paths` when resolving `win_path`.
+- `getFolders` now includes `image_count` per folder for tree display.
+- Added `win_path` fallback when missing (construct from `file_path` on Windows).
+- Test environment detection: automatically switches to `SCORING_HISTORY_TEST.FDB` when `NODE_ENV=test` or `VITEST`.
+
+### Fixed
+- Discard invalid `win_path` values when extension mismatches `file_name` (bad data in `file_paths`).
+
 ## [3.22.0] - 2026-02-19
 
 ### Added

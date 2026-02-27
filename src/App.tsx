@@ -18,7 +18,7 @@ function App() {
   const addNotification = useNotificationStore(state => state.addNotification);
 
   const { isConnected, error } = useDatabase();
-  const { folders, loading: foldersLoading } = useFolders();
+  const { folders, loading: foldersLoading, refresh: refreshFolders } = useFolders();
   const { keywords, loading: keywordsLoading } = useKeywords();
 
   const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>(undefined);
@@ -157,14 +157,14 @@ function App() {
   }, [folders, selectedFolderId]);
 
   const handleImageClick = (image: any) => {
-    const imgList = activeStackId ? stackImages : images;
+    const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
     const index = imgList.findIndex(img => img.id === image.id);
     setCurrentImageIndex(index >= 0 ? index : 0);
     setOpeningImage(image);
   };
 
   const handleNavigateImage = (newIndex: number) => {
-    const imgList = activeStackId ? stackImages : images;
+    const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
     if (newIndex >= 0 && newIndex < imgList.length) {
       setCurrentImageIndex(newIndex);
       setOpeningImage(imgList[newIndex]);
@@ -233,7 +233,7 @@ function App() {
   };
 
   // Determine current display
-  const currentImages = activeStackId ? stackImages : images;
+  const currentImages = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
   const currentTotal = stacksMode && !activeStackId ? stacksTotalCount : (activeStackId ? (activeStackInfo?.imageCount || stackImages.length) : totalCount);
 
   // Header title
@@ -389,7 +389,7 @@ function App() {
 
             <div style={{ flex: 1, overflow: 'hidden', borderTop: '1px solid #333', paddingTop: 10 }}>
               {foldersLoading ? <div>Loading folders...</div> : (
-                <FolderTree folders={folders} onSelect={handleSelectFolder} selectedId={selectedFolderId} />
+                <FolderTree folders={folders} onSelect={handleSelectFolder} selectedId={selectedFolderId} onRefresh={refreshFolders} />
               )}
             </div>
           </div>

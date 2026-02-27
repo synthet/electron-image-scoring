@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electron', {
     getImageDetails: (id: number) => ipcRenderer.invoke('db:get-image-details', id),
     updateImageDetails: (id: number, updates: any) => ipcRenderer.invoke('db:update-image-details', { id, updates }),
     deleteImage: (id: number) => ipcRenderer.invoke('db:delete-image', id),
+    deleteFolder: (id: number) => ipcRenderer.invoke('db:delete-folder', id),
     getFolders: () => ipcRenderer.invoke('db:get-folders'),
     getKeywords: () => ipcRenderer.invoke('db:get-keywords'),
     getStacks: (options?: any) => ipcRenderer.invoke('db:get-stacks', options),

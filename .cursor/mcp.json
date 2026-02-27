@@ -9,6 +9,25 @@
             "env": {
                 "PYTHONPATH": "d:\\Projects\\image-scoring"
             }
+        },
+        "electron-debug": {
+            "command": "node",
+            "args": [
+                "d:\\Projects\\electron-image-scoring\\mcp-server\\dist\\index.js"
+            ],
+            "disabled": false
+        },
+        "mcp-firebird": {
+            "command": "mcp-firebird",
+            "args": [
+                "--database",
+                "D:/Projects/image-scoring/SCORING_HISTORY.FDB",
+                "--user",
+                "SYSDBA",
+                "--password",
+                "masterkey"
+            ],
+            "disabled": false
         }
     }
 }

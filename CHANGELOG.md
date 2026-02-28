@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.24.1] - 2026-02-27
+
+### Fixed
+- Fixed an issue where the Stacks view would fail to display correctly by correcting the `rebuildStackCache` SQL query.
+- Fixed stack cache rebuild logic to properly queue overlapping rebuild requests and UI to refresh upon completion.
+- Fixed keyword data retrieval and updating in the database bounds (added missing CAST and allowed field).
+
 ## [3.24.0] - 2026-02-26
 
 ### Added

@@ -33,7 +33,7 @@ function App() {
   const [cacheBuilt, setCacheBuilt] = useState(false);
 
   const { images, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, filters);
-  const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount } = useStacks(50, selectedFolderId, filters);
+  const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount, refresh: refreshStacks } = useStacks(50, selectedFolderId, filters);
 
   const [stackImages, setStackImages] = useState<any[]>([]);
   const [stackImagesLoading, setStackImagesLoading] = useState(false);
@@ -44,11 +44,12 @@ function App() {
       window.electron.rebuildStackCache().then((result) => {
         console.log('[App] Stack cache rebuild result:', result);
         setCacheBuilt(true);
+        refreshStacks();
       }).catch(err => {
         console.error('[App] Failed to rebuild stack cache:', err);
       });
     }
-  }, [stacksMode, cacheBuilt]);
+  }, [stacksMode, cacheBuilt, refreshStacks]);
 
   // Load images when activeStackId changes or filters change while inside a stack
   const loadStackImages = useCallback(async (stackId: number) => {

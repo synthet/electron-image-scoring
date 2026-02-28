@@ -1,7 +1,7 @@
 {
   "name": "electron-gallery",
   "private": true,
-  "version": "3.24.0",
+  "version": "3.24.1",
   "description": "A high-performance image gallery with scoring capabilities",
   "author": "Electron Image Scoring Team",
   "main": "dist-electron/main.js",
@@ -35,13 +35,14 @@
   },
   "dependencies": {
     "electron-is-dev": "^3.0.1",
-    "exiftool-vendored": "^35.7.0",
+    "exiftool-vendored": "^35.11.0",
     "libraw-wasm": "^1.1.2",
     "lucide-react": "^0.563.0",
     "node-firebird": "^1.1.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-virtuoso": "^4.18.1",
+    "sharp": "^0.34.5",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

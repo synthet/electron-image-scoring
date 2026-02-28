@@ -340,7 +340,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             flexDirection: 'row'
         }}>
             {/* Main Image Area */}
-            <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', minHeight: 0, minWidth: 0 }}>
                 <button
                     onClick={onClose}
                     style={{
@@ -384,7 +384,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <img
                         src={src}
                         alt={image.file_name}
-                        style={{ maxWidth: '95%', maxHeight: '95%', objectFit: 'contain', boxShadow: '0 0 20px rgba(0,0,0,0.5)' }}
+                        style={{ maxWidth: '95%', maxHeight: '95vh', width: 'auto', height: 'auto', objectFit: 'contain', boxShadow: '0 0 20px rgba(0,0,0,0.5)' }}
                     />
                 ) : (
                     <div style={{ color: '#666' }}>{error || 'Image not found'}</div>

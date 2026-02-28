@@ -33,8 +33,20 @@ export class NefExtractor {
         try {
             console.log(`[NefExtractor] Attempting exiftool extraction for: ${nefPath}`);
 
-            // extractJpgFromRaw automatically finds the best/largest preview
+            // 1. Read the orientation from the original NEF first
+            const tags = await exiftool.read(nefPath);
+            const orientation = tags.Orientation; // e.g. "Rotate 90 CW", 1, 6, 8, etc.
+
+            // 2. Extract best JPEG (JpgFromRaw or PreviewImage)
             await exiftool.extractJpgFromRaw(nefPath, tempJpeg);
+
+            // 3. Since exiftool just dumps the binary chunk, it might lack EXIF orientation or have it stripped
+            // We use ExifTool to explicitly write the orientation back into the extracted JPEG
+            // so the browser renderer (with image-orientation: from-image) handles it.
+            if (orientation && String(orientation) !== '1' && String(orientation) !== 'Horizontal (normal)') {
+                console.log(`[NefExtractor] Detected orientation: ${orientation}, applying to extracted JPEG`);
+                await exiftool.write(tempJpeg, { Orientation: orientation }, ['-overwrite_original']);
+            }
 
             const buffer = await fs.readFile(tempJpeg);
             console.log(`[NefExtractor] ✓ Tier 1: exiftool extracted preview (${(buffer.length / 1024).toFixed(1)} KB)`);

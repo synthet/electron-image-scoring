@@ -226,8 +226,22 @@ export function useStacks(pageSize: number = 50, folderId?: number, filters?: an
         if (offset === 0 && hasMore && !loading) {
             loadMore();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [offset, folderId, JSON.stringify(filters)]);
 
-    return { stacks, loading, hasMore, loadMore, totalCount };
+    const refresh = () => {
+        setOffset(0);
+        setStacks([]);
+        setHasMore(true);
+        // We will trigger loadMore either by effect (since offset=0) or manually
+        // Since offset might already be 0, we should ensure loadMore runs.
+        // It's safer to just set a timestamp or trigger state, but triggering offset to 0 should work if we rely on the effect. Actually, offset might be 0 already if no data was found.
+        // Let's add a trigger state or just call loadMore directly if offset === 0
+        setOffset(0);
+        setStacks([]);
+        setHasMore(true);
+        // We will force a load by skipping the offset check
+        setTimeout(() => loadMore(), 0);
+    };
+
+    return { stacks, loading, hasMore, loadMore, totalCount, refresh };
 }

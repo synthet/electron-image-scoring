@@ -406,9 +406,9 @@ export async function getImageDetails(id: number): Promise<any> {
             i.score_koniq,
             i.score_paq2piq,
             i.score_liqe,
-            i.keywords,
-            i.title,
-            i.description,
+            CAST(i.keywords AS VARCHAR(8191)) as keywords,
+            CAST(i.title AS VARCHAR(8191)) as title,
+            CAST(i.description AS VARCHAR(8191)) as description,
             i.metadata,
             i.thumbnail_path,
             i.scores_json,
@@ -510,7 +510,7 @@ export async function deleteFolder(id: number): Promise<boolean> {
 }
 
 export async function updateImageDetails(id: number, updates: any): Promise<boolean> {
-    const allowedFields = ['title', 'description', 'rating', 'label'];
+    const allowedFields = ['title', 'description', 'rating', 'label', 'keywords'];
     const setParts: string[] = [];
     const params: any[] = [];
 
@@ -599,15 +599,17 @@ export async function ensureStackCacheTable(): Promise<void> {
 }
 
 let rebuildPromise: Promise<number> | null = null;
+let pendingRebuild: boolean = false;
 
 export async function rebuildStackCache(): Promise<number> {
-    // If a rebuild is already in progress, return the existing promise
+    // If a rebuild is already in progress, queue another one to run when it finishes
     if (rebuildPromise) {
-        console.log('[DB] Stack cache rebuild already in progress, joining existing request...');
+        console.log('[DB] Stack cache rebuild already in progress, queuing another request...');
+        pendingRebuild = true;
         return rebuildPromise;
     }
 
-    rebuildPromise = (async () => {
+    const runRebuild = async (): Promise<number> => {
         try {
             await ensureStackCacheTable();
 
@@ -652,12 +654,13 @@ export async function rebuildStackCache(): Promise<number> {
                 await txQuery(`
                     MERGE INTO stack_cache sc
                     USING (
-                        SELECT i.stack_id, i.id as best_id
+                        SELECT i.stack_id, MIN(i.id) as best_id
                         FROM images i
                         WHERE i.stack_id IS NOT NULL
                           AND i.score_general = (
                               SELECT MAX(i2.score_general) FROM images i2 WHERE i2.stack_id = i.stack_id
                           )
+                        GROUP BY i.stack_id
                     ) src
                     ON sc.stack_id = src.stack_id
                     WHEN MATCHED THEN UPDATE SET sc.rep_image_id = src.best_id
@@ -669,11 +672,18 @@ export async function rebuildStackCache(): Promise<number> {
                 return count;
             });
         } finally {
-            // Always clear the promise when done, so subsequent calls can trigger a new rebuild if needed
             rebuildPromise = null;
+            if (pendingRebuild) {
+                pendingRebuild = false;
+                console.log('[DB] Running queued stack cache rebuild...');
+                // intentionally do not await here so we don't block the previous caller
+                // but we start the next cycle
+                rebuildStackCache().catch(console.error);
+            }
         }
-    })();
+    };
 
+    rebuildPromise = runRebuild();
     return rebuildPromise;
 }
 

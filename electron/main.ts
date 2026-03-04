@@ -30,6 +30,25 @@ function showSaveDialog(options: Electron.SaveDialogOptions) {
     return win ? dialog.showSaveDialog(win, options) : dialog.showSaveDialog(options);
 }
 
+/**
+ * Wraps an IPC handler to provide consistent error handling.
+ * Returns { ok: true, data: T } on success, { ok: false, error: string } on error.
+ */
+function wrapIpcHandler<T>(
+    handler: (...args: any[]) => Promise<T> | T
+): (...args: any[]) => Promise<{ ok: boolean; data?: T; error?: string }> {
+    return async (...args: any[]) => {
+        try {
+            const data = await handler(...args);
+            return { ok: true, data };
+        } catch (error: any) {
+            const errorMessage = error?.message || String(error) || 'Unknown error';
+            console.error('[IPC] Handler error:', errorMessage, error);
+            return { ok: false, error: errorMessage };
+        }
+    };
+}
+
 const exportCurrentImage = async () => {
     if (!currentExportImageContext?.imageBytes?.length) {
         await showMessageBox({
@@ -110,6 +129,11 @@ function loadConfig() {
 }
 
 const config = loadConfig();
+const devRemoteDebuggingPort = process.env.ELECTRON_REMOTE_DEBUGGING_PORT || '9222';
+
+if (isDev) {
+    app.commandLine.appendSwitch('remote-debugging-port', devRemoteDebuggingPort);
+}
 
 function createWindow() {
     console.log('[Main] Creating window...');
@@ -129,7 +153,6 @@ function createWindow() {
         const devUrl = config.dev?.url || 'http://localhost:5173';
         console.log('[Main] Loading dev URL:', devUrl);
         mainWindow.loadURL(devUrl);
-        mainWindow.webContents.openDevTools();
     } else {
         console.log('[Main] Loading production file');
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -155,236 +178,169 @@ app.whenReady().then(async () => {
     // Ensure DB is running
     await db.ensureFirebirdRunning();
 
-    // Handle media:// requests
+    // Handle media:// requests with path sanitization
     protocol.handle('media', (request) => {
         console.log('[Main] Media request:', request.url);
         let url = request.url.replace('media://', '');
         let filePath = decodeURIComponent(url);
+
+        // Convert WSL paths to Windows paths
         if (filePath.match(/^\/?mnt\/[a-zA-Z]\//)) {
             filePath = filePath.replace(/^\/?mnt\/([a-zA-Z])\//, '$1:/');
         }
-        return net.fetch('file:///' + filePath);
+
+        // Sanitize path: resolve and normalize to prevent traversal attacks
+        try {
+            const resolvedPath = path.resolve(filePath);
+            const normalizedPath = path.normalize(resolvedPath);
+
+            // Ensure the path doesn't contain .. or resolve outside expected boundaries
+            if (normalizedPath.includes('..') || !normalizedPath.includes(':')) {
+                console.error('[Main] Blocked suspicious path:', filePath);
+                return new Response('Access denied', { status: 403 });
+            }
+
+            return net.fetch('file:///' + normalizedPath);
+        } catch (e) {
+            console.error('[Main] Invalid media path:', filePath, e);
+            return new Response('Invalid path', { status: 400 });
+        }
     });
 
-    console.log('[Main] Protocol setup, creating window...');
-    createWindow();
-    rebuildApplicationMenu();
-
-    // IPC Handlers
+    // Register ALL IPC handlers BEFORE creating the window.
+    // The renderer calls ping/checkDbConnection immediately on load —
+    // if handlers aren't registered yet, ipcRenderer.invoke() never resolves.
     ipcMain.handle('ping', () => 'pong');
 
-    ipcMain.handle('db:check-connection', async () => {
+    ipcMain.handle('db:check-connection', wrapIpcHandler(async () => {
         return await db.checkConnection();
-    });
+    }));
 
-    ipcMain.handle('db:get-image-count', async (_, options) => {
-        try {
-            return await db.getImageCount(options);
-        } catch (e: any) {
-            console.error('DB Error:', e);
-            return { error: e.message };
+    ipcMain.handle('db:get-image-count', wrapIpcHandler(async (_, options) => {
+        return await db.getImageCount(options);
+    }));
+
+    ipcMain.handle('db:get-images', wrapIpcHandler(async (_, options) => {
+        return await db.getImages(options);
+    }));
+
+    ipcMain.handle('db:get-image-details', wrapIpcHandler(async (_, id) => {
+        console.log(`[Main] Getting image details for ID: ${id}`);
+        const result = await db.getImageDetails(id);
+        console.log(`[Main] Image details result:`, result ? 'Data received' : 'NULL returned');
+        if (result) {
+            console.log(`[Main] Image details keys:`, Object.keys(result));
         }
-    });
+        return result;
+    }));
 
-    ipcMain.handle('db:get-images', async (_, options) => {
-        try {
-            return await db.getImages(options);
-        } catch (e: any) {
-            console.error('DB Error:', e);
-            return [];
-        }
-    });
+    ipcMain.handle('db:update-image-details', wrapIpcHandler(async (_, { id, updates }) => {
+        console.log(`[Main] Updating image details for ID: ${id}`, updates);
+        return await db.updateImageDetails(id, updates);
+    }));
 
-    ipcMain.handle('db:get-image-details', async (_, id) => {
-        try {
-            console.log(`[Main] Getting image details for ID: ${id}`);
-            const result = await db.getImageDetails(id);
-            console.log(`[Main] Image details result:`, result ? 'Data received' : 'NULL returned');
-            if (result) {
-                console.log(`[Main] Image details keys:`, Object.keys(result));
-            }
-            return result;
-        } catch (e: any) {
-            console.error('[Main] DB Error (details):', e);
-            console.error('[Main] Error stack:', e.stack);
-            throw e; // Re-throw so the error reaches the renderer
-        }
-    });
+    ipcMain.handle('db:delete-image', wrapIpcHandler(async (_, id) => {
+        console.log(`[Main] Deleting image ID: ${id}`);
+        return await db.deleteImage(id);
+    }));
 
-    ipcMain.handle('db:update-image-details', async (_, { id, updates }) => {
-        try {
-            console.log(`[Main] Updating image details for ID: ${id}`, updates);
-            return await db.updateImageDetails(id, updates);
-        } catch (e: any) {
-            console.error('[Main] DB Error (update):', e);
-            throw e;
-        }
-    });
+    ipcMain.handle('db:get-keywords', wrapIpcHandler(async () => {
+        return await db.getKeywords();
+    }));
 
-    ipcMain.handle('db:delete-image', async (_, id) => {
-        try {
-            console.log(`[Main] Deleting image ID: ${id}`);
-            return await db.deleteImage(id);
-        } catch (e: any) {
-            console.error('[Main] DB Error (delete):', e);
-            throw e;
-        }
-    });
+    ipcMain.handle('db:get-stacks', wrapIpcHandler(async (_, options) => {
+        return await db.getStacks(options);
+    }));
 
-    ipcMain.handle('db:get-keywords', async () => {
-        try {
-            return await db.getKeywords();
-        } catch (e: any) {
-            console.error('DB Error (keywords):', e);
-            return [];
-        }
-    });
+    ipcMain.handle('db:get-images-by-stack', wrapIpcHandler(async (_, { stackId, options }) => {
+        return await db.getImagesByStack(stackId, options);
+    }));
 
-    ipcMain.handle('db:get-stacks', async (_, options) => {
-        try {
-            return await db.getStacks(options);
-        } catch (e: any) {
-            console.error('DB Error (stacks):', e);
-            return [];
-        }
-    });
+    ipcMain.handle('db:get-stack-count', wrapIpcHandler(async (_, options) => {
+        return await db.getStackCount(options);
+    }));
 
-    ipcMain.handle('db:get-images-by-stack', async (_, { stackId, options }) => {
-        try {
-            return await db.getImagesByStack(stackId, options);
-        } catch (e: any) {
-            console.error('DB Error (images by stack):', e);
-            return [];
-        }
-    });
+    ipcMain.handle('db:rebuild-stack-cache', wrapIpcHandler(async () => {
+        const count = await db.rebuildStackCache();
+        return { success: true, count };
+    }));
 
-    ipcMain.handle('db:get-stack-count', async (_, options) => {
-        try {
-            return await db.getStackCount(options);
-        } catch (e: any) {
-            console.error('DB Error (stack count):', e);
-            return { error: e.message };
-        }
-    });
+    ipcMain.handle('db:get-folders', wrapIpcHandler(async () => {
+        const rawFolders = await db.getFolders();
 
-    ipcMain.handle('db:rebuild-stack-cache', async () => {
-        try {
-            const count = await db.rebuildStackCache();
-            return { success: true, count };
-        } catch (e: any) {
-            console.error('DB Error (rebuild stack cache):', e);
-            return { success: false, error: e.message };
-        }
-    });
 
-    ipcMain.handle('db:get-folders', async () => {
-        try {
-            const rawFolders = await db.getFolders();
-
-            // Helper to convert paths (similar to python modules/utils.py)
-            const convertPathToLocal = (p: string) => {
-                const isWindows = process.platform === 'win32';
-                if (isWindows) {
-                    const pStr = p.replace(/\\/g, '/');
-                    if (pStr.startsWith('/mnt/')) {
-                        // /mnt/d/foo -> parts=["", "mnt", "d", "foo"]
-                        const parts = pStr.split('/');
-                        if (parts.length > 2 && parts[2].length === 1) {
-                            const drive = parts[2].toUpperCase();
-                            const rest = parts.slice(3).join('/');
-                            // Handle root of drive case /mnt/d -> D:/
-                            return `${drive}:/${rest}`;
-                        }
+        const convertPathToLocal = (p: string) => {
+            const isWindows = process.platform === 'win32';
+            if (isWindows) {
+                const pStr = p.replace(/\\/g, '/');
+                if (pStr.startsWith('/mnt/')) {
+                    const parts = pStr.split('/');
+                    if (parts.length > 2 && parts[2].length === 1) {
+                        const drive = parts[2].toUpperCase();
+                        const rest = parts.slice(3).join('/');
+                        return `${drive}:/${rest}`;
                     }
                 }
-                return p;
-            };
+            }
+            return p;
+        };
 
-            const processed = rawFolders.map((f: any) => {
-                return { ...f, path: convertPathToLocal(f.path) };
-            }).filter((f: any) => {
-                if (process.platform === 'win32') {
-                    // Only keep paths that look like drive paths (C:/...)
-                    // Filter out /mnt, /, ., or relative paths
-                    // Must start with X:
-                    const isDrivePath = /^[a-zA-Z]:/.test(f.path);
-                    if (!isDrivePath) return false;
-
-                    // Filter out strict WSL artifacts if they somehow passed (unlikely if regex matches)
-                    if (f.path.startsWith('/mnt') || f.path === '/' || f.path === '.') return false;
-
-                    return true;
-                }
+        const processed = rawFolders.map((f: any) => {
+            return { ...f, path: convertPathToLocal(f.path) };
+        }).filter((f: any) => {
+            if (process.platform === 'win32') {
+                const isDrivePath = /^[a-zA-Z]:/.test(f.path);
+                if (!isDrivePath) return false;
+                if (f.path.startsWith('/mnt') || f.path === '/' || f.path === '.') return false;
                 return true;
-            });
+            }
+            return true;
+        });
 
-            // Deduplicate by path (if multiple DB entries map to same local path)
-            // But we need to keep IDs. 
-            // If we have duplicates, we might have issues with parent_id linkage?
-            // For now, let's just return the processed list. The frontend uses IDs.
-            // If ID 1 maps to D:/ and ID 2 maps to D:/, and ID 3 parent is 1...
-            // It should be fine.
+        return processed;
+    }));
 
-            return processed;
-        } catch (e: any) {
-            console.error('DB Error:', e);
-            return [];
-        }
-    });
-
-    ipcMain.handle('db:delete-folder', async (_, id) => {
-        try {
-            console.log(`[Main] Deleting folder ID: ${id}`);
-            return await db.deleteFolder(id);
-        } catch (e: any) {
-            console.error('[Main] DB Error (delete folder):', e);
-            throw e;
-        }
-    });
+    ipcMain.handle('db:delete-folder', wrapIpcHandler(async (_, id) => {
+        console.log(`[Main] Deleting folder ID: ${id}`);
+        return await db.deleteFolder(id);
+    }));
 
     ipcMain.handle('nef:extract-preview', async (_, filePath: string) => {
         try {
             console.log(`[Main] NEF preview requested for: ${filePath}`);
 
-            // Convert WSL path to Windows path if needed
             let convertedPath = filePath;
             if (process.platform === 'win32' && filePath.match(/^\/mnt\/[a-zA-Z]\//)) {
-                // /mnt/d/foo -> D:/foo
                 convertedPath = filePath.replace(/^\/mnt\/([a-zA-Z])\//, '$1:/');
                 console.log(`[Main] Converted WSL path: ${filePath} -> ${convertedPath}`);
             }
 
-            // Check if file is actually a NEF file
             const ext = path.extname(convertedPath).toLowerCase();
             if (ext !== '.nef') {
                 console.log(`[Main] Skipping non-NEF file (${ext}), returning fallback`);
-                // Return file buffer for client-side processing (might be JPG, etc.)
                 const fileBuffer = await fs.promises.readFile(convertedPath);
                 return {
                     success: false,
                     fallback: true,
-                    buffer: Array.from(new Uint8Array(fileBuffer))
+                    buffer: fileBuffer
                 };
             }
 
-            // Tier 1: Try exiftool-vendored extraction
             const buffer = await nefExtractor.extractPreview(convertedPath);
 
             if (buffer) {
-                // Success! Return the JPEG buffer
                 return {
                     success: true,
-                    buffer: Array.from(new Uint8Array(buffer))
+                    buffer: buffer
                 };
             }
 
-            // Tier 1 failed, return file buffer for client-side fallback
             console.log('[Main] Tier 1 failed, falling back to client-side extraction');
             const fileBuffer = await fs.promises.readFile(convertedPath);
             return {
                 success: false,
                 fallback: true,
-                buffer: Array.from(new Uint8Array(fileBuffer))
+                buffer: fileBuffer
             };
         } catch (e: any) {
             console.error('[Main] NEF extraction error:', e);
@@ -424,25 +380,21 @@ app.whenReady().then(async () => {
 
     ipcMain.handle('system:get-api-config', async () => {
         const config = loadConfig();
-        // Priority: Config -> WebUI Lock File -> Default
         let port = 7860;
         let host = '127.0.0.1';
-        let url = '';
 
-        // 1. Check Config
         if (config.api) {
-            if (config.api.url) return { url: config.api.url }; // Return full URL if explicitly set
+            if (config.api.url) return { url: config.api.url };
             if (config.api.port) port = config.api.port;
             if (config.api.host) host = config.api.host;
         }
 
-        // 2. Check Lock File (Dynamic Port)
         try {
             const projectRoot = path.resolve(__dirname, '..');
             const projectsDir = path.resolve(projectRoot, '..');
             const locks = [
                 path.join(projectsDir, 'image-scoring', 'webui.lock'),
-                path.join(projectsDir, 'image-scoring', 'webui-debug.lock') // Check debug lock too
+                path.join(projectsDir, 'image-scoring', 'webui-debug.lock')
             ];
 
             for (const lockFile of locks) {
@@ -463,15 +415,8 @@ app.whenReady().then(async () => {
         return { url: `http://${host}:${port}` };
     });
 
-    // Deprecated: keeping for backward compatibility if needed, but get-api-config is preferred
     ipcMain.handle('system:get-api-port', async () => {
         try {
-            // Try to find image-scoring sibling directory
-            // Assuming layout:
-            // /Projects/electron-image-scoring/dist-electron/main.js
-            // /Projects/image-scoring/webui.lock
-
-            // Go up from dist-electron to project root, then up to Projects, then down to image-scoring
             const projectRoot = path.resolve(__dirname, '..');
             const projectsDir = path.resolve(projectRoot, '..');
             const lockFile = path.join(projectsDir, 'image-scoring', 'webui.lock');
@@ -489,11 +434,22 @@ app.whenReady().then(async () => {
         } catch (e) {
             console.error('[Main] Failed to read API port:', e);
         }
-        return 7860; // Default fallback
+        return 7860;
     });
+
+    console.log('[Main] All IPC handlers registered. Creating window...');
+    createWindow();
+    rebuildApplicationMenu();
 });
 
+
+
+
+
 app.on('window-all-closed', async () => {
+    // Close persistent database connection
+    db.closeConnection();
+
     // Cleanup exiftool resources
     await nefExtractor.cleanup();
 

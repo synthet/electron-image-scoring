@@ -8,7 +8,18 @@
             ],
             "env": {
                 "PYTHONPATH": "d:\\Projects\\image-scoring"
-            }
+            },
+            "disabledTools": [
+                "search_similar_images"
+            ]
+        },
+        "chrome-devtools": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "chrome-devtools-mcp",
+                "--browser-url=http://127.0.0.1:9222"
+            ]
         },
         "electron-debug": {
             "command": "node",
@@ -18,16 +29,35 @@
             "disabled": false
         },
         "mcp-firebird": {
-            "command": "mcp-firebird",
+            "command": "npx",
             "args": [
+                "-y",
+                "mcp-firebird",
                 "--database",
-                "D:/Projects/image-scoring/SCORING_HISTORY.FDB",
+                "d:\\Projects\\image-scoring\\SCORING_HISTORY.FDB",
                 "--user",
-                "SYSDBA",
+                "sysdba",
                 "--password",
                 "masterkey"
             ],
-            "disabled": false
+            "disabled": false,
+            "disabledTools": [
+                "verify-wire-encryption",
+                "restore-database",
+                "analyze-table-statistics",
+                "get-field-descriptions",
+                "system-health-check",
+                "get-database-info",
+                "get-server-info",
+                "execute-batch-queries",
+                "describe-batch-tables",
+                "analyze-missing-indexes",
+                "get-tool-help",
+                "list-available-tools",
+                "get-execution-plan",
+                "analyze-query-performance",
+                "backup-database"
+            ]
         }
     }
 }

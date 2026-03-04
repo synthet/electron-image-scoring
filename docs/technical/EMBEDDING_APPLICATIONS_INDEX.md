@@ -11,6 +11,7 @@ This index breaks out each proposed `image_embedding` frontend use case into a s
 - [05 - 2D Embedding Map](EMBEDDING_APP_05_2D_EMBEDDING_MAP.md)
 - [06 - Smart Stack Representative](EMBEDDING_APP_06_SMART_STACK_REPRESENTATIVE.md)
 - [07 - More Like This UI](EMBEDDING_APP_07_MORE_LIKE_THIS_UI.md)
+- [08 - Gradio Interface Integration](EMBEDDING_APP_08_GRADIO_INTEGRATION.md)
 
 ## Scope and assumptions
 

@@ -118,12 +118,6 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
         Item: ItemWrapper
     }), []);
 
-    // #region agent log
-    const log = (msg: string, data: Record<string, unknown>, hypothesisId: string) => {
-        Logger.info(msg, { ...data, hypothesisId });
-    };
-    // #endregion
-
     const getScoreDisplay = useCallback((img: Image) => {
         switch (sortBy) {
             case 'created_at':
@@ -288,17 +282,12 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
     }, [displayData, isStacksView, renderStackCard, renderImageCard, onSelectStack, onSelect]);
 
     const handleEndReached = useCallback(() => {
-        // #region agent log
-        log('endReached fired', { totalCount: displayData.length }, 'A');
-        // #endregion
         endReachedHandler?.();
-    }, [endReachedHandler, displayData.length]);
+    }, [endReachedHandler]);
 
-    const handleAtBottomChange = useCallback((atBottom: boolean) => {
-        // #region agent log
-        log('atBottomStateChange', { atBottom, totalCount: displayData.length }, 'A');
-        // #endregion
-    }, [displayData.length]);
+    const handleAtBottomChange = useCallback((_atBottom: boolean) => {
+        // no-op, available for future use
+    }, []);
 
     if (displayData.length === 0 && subfolders && subfolders.length > 0) {
         return (

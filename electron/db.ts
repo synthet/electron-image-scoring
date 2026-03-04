@@ -58,6 +58,10 @@ const options: Firebird.Options = {
 // This means the Python script or a service MUST be running.
 // We will assume server is running on localhost:3050.
 
+// Connection pooling: maintain a single persistent connection
+let persistentConnection: Firebird.Database | null = null;
+let connectionPromise: Promise<Firebird.Database> | null = null;
+
 export async function connectDB(): Promise<Firebird.Database> {
     console.log('[DB] Attempting to attach to Firebird...');
     return new Promise((resolve, reject) => {
@@ -70,6 +74,74 @@ export async function connectDB(): Promise<Firebird.Database> {
             resolve(db);
         });
     });
+}
+
+/**
+ * Get or create a persistent database connection.
+ * Implements connection pooling by reusing a single connection.
+ * Includes a timeout to prevent indefinite hangs when Firebird is unreachable.
+ */
+async function getConnection(): Promise<Firebird.Database> {
+    // If we have a working connection, return it
+    if (persistentConnection) {
+        return persistentConnection;
+    }
+
+    // If a connection is already being established, wait for it
+    if (connectionPromise) {
+        return connectionPromise;
+    }
+
+    const CONNECTION_TIMEOUT_MS = 10000; // 10 seconds
+
+    // Create a new connection with timeout
+    connectionPromise = new Promise<Firebird.Database>((resolve, reject) => {
+        // Pre-check: verify port is open before attempting attach
+        const port = options.port || 3050;
+        const host = options.host || '127.0.0.1';
+
+        console.log(`[DB] Attempting persistent connection to ${host}:${port}...`);
+
+        // Timeout guard — node-firebird has no built-in timeout
+        const timeout = setTimeout(() => {
+            connectionPromise = null;
+            persistentConnection = null;
+            reject(new Error(`Connection timeout after ${CONNECTION_TIMEOUT_MS / 1000}s — is Firebird running on ${host}:${port}?`));
+        }, CONNECTION_TIMEOUT_MS);
+
+        Firebird.attach(options, (err, db) => {
+            clearTimeout(timeout);
+            connectionPromise = null;
+
+            if (err) {
+                console.error('[DB] Failed to establish persistent connection:', err);
+                persistentConnection = null;
+                return reject(err);
+            }
+
+            console.log('[DB] Persistent connection established');
+            persistentConnection = db;
+            resolve(db);
+        });
+    });
+
+    return connectionPromise;
+}
+
+/**
+ * Close the persistent database connection.
+ */
+export function closeConnection(): void {
+    if (persistentConnection) {
+        persistentConnection.detach((err) => {
+            if (err) {
+                console.error('[DB] Error closing connection:', err);
+            } else {
+                console.log('[DB] Connection closed');
+            }
+            persistentConnection = null;
+        });
+    }
 }
 
 // Check if Firebird port is open
@@ -164,37 +236,60 @@ export async function checkConnection(): Promise<boolean> {
     }
 }
 
-export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-    return new Promise((resolve, reject) => {
-        Firebird.attach(options, (err, db) => {
-            if (err) return reject(err);
+// Simple query queue to avoid concurrent operations on a single Firebird connection,
+// which has been observed to trigger internal driver errors in node-firebird.
+let queryChain: Promise<unknown> = Promise.resolve();
 
+async function executeQuery<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    try {
+        const db = await getConnection();
+
+        return await new Promise<T[]>((resolve, reject) => {
             db.query(sql, params, (err, result) => {
-                db.detach(); // Always detach after query
-                if (err) return reject(err);
-
-                // Convert buffers to strings if needed (blob text)
-                // Firebird returns BLOBs as Buffers or streams?
-                // node-firebird usually handles text BLOBs if specified?
-                // We'll see.
+                if (err) {
+                    // Connection may be stale, reset it
+                    persistentConnection = null;
+                    return reject(err);
+                }
 
                 resolve(result as T[]);
             });
         });
-    });
+    } catch (err) {
+        console.error('[DB] Query failed:', err);
+        throw err;
+    }
+}
+
+export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    const run = () => executeQuery<T>(sql, params);
+
+    // Schedule this query to run after all previous queries complete,
+    // regardless of whether they succeeded or failed.
+    const p = queryChain.then(run, run);
+
+    // Advance the chain, but swallow individual query results/errors
+    // so that one failing query doesn't block the entire queue.
+    queryChain = p.then(
+        () => undefined,
+        () => undefined
+    );
+
+    return p;
 }
 
 export async function runTransaction<T>(
     callback: (tx: Firebird.Transaction, txQuery: <R = any>(sql: string, params?: any[]) => Promise<R[]>) => Promise<T>,
     isolation: any = Firebird.ISOLATION_READ_COMMITTED
 ): Promise<T> {
-    return new Promise((resolve, reject) => {
-        Firebird.attach(options, (err, db) => {
-            if (err) return reject(err);
+    try {
+        const db = await getConnection();
 
+        return new Promise((resolve, reject) => {
             db.transaction(isolation, async (err, transaction) => {
                 if (err) {
-                    db.detach();
+                    // Connection may be stale, reset it
+                    persistentConnection = null;
                     return reject(err);
                 }
 
@@ -210,20 +305,24 @@ export async function runTransaction<T>(
                 try {
                     const result = await callback(transaction, txQuery);
                     transaction.commit((commitErr) => {
-                        db.detach();
-                        if (commitErr) return reject(commitErr);
+                        if (commitErr) {
+                            persistentConnection = null;
+                            return reject(commitErr);
+                        }
                         resolve(result);
                     });
                 } catch (cbErr) {
                     transaction.rollback((rollbackErr) => {
                         if (rollbackErr) console.error('[DB] Rollback error:', rollbackErr);
-                        db.detach();
                         reject(cbErr);
                     });
                 }
             });
         });
-    });
+    } catch (err) {
+        console.error('[DB] Transaction failed:', err);
+        throw err;
+    }
 }
 
 export async function getImageCount(options: ImageQueryOptions = {}): Promise<number> {
@@ -491,12 +590,15 @@ export async function getImageDetails(id: number): Promise<any> {
 }
 
 export async function getFolders(): Promise<any[]> {
-    return query(`
+    const rows = await query(`
         SELECT f.id, f.path, f.parent_id, f.is_fully_scored,
                (SELECT COUNT(1) FROM images i WHERE i.folder_id = f.id) as image_count
         FROM folders f
         ORDER BY f.path ASC
     `);
+
+
+    return rows;
 }
 
 export async function deleteFolder(id: number): Promise<boolean> {

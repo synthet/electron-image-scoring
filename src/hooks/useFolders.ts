@@ -11,6 +11,9 @@ export function useFolders() {
         window.electron.getFolders().then(res => {
             setFlatFolders(res);
             setLoading(false);
+        }).catch(err => {
+            console.error('[useFolders] Failed to fetch folders:', err);
+            setLoading(false);
         });
     };
 

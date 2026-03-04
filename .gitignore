@@ -41,3 +41,5 @@ config.json
 # Scratch logs
 git_log.txt
 git_status.txt
+
+.mcp.json

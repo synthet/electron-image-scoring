@@ -5,7 +5,7 @@ declare global {
         electron: {
             ping: () => Promise<string>;
             checkDbConnection: () => Promise<boolean>;
-            getImageCount: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<number | { error: string }>;
+            getImageCount: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<number>;
             getImages: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<any[]>;
             getImageDetails: (id: number) => Promise<any>;
             updateImageDetails: (id: number, updates: any) => Promise<boolean>;
@@ -15,14 +15,12 @@ declare global {
             getKeywords: () => Promise<string[]>;
             getStacks: (options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<any[]>;
             getImagesByStack: (stackId: number | null, options?: { limit?: number; offset?: number; folderId?: number; minRating?: number; colorLabel?: string; keyword?: string; sortBy?: string; order?: 'ASC' | 'DESC' }) => Promise<any[]>;
-            getStackCount: (options?: { folderId?: number; minRating?: number; colorLabel?: string; keyword?: string }) => Promise<number | { error: string }>;
-            rebuildStackCache: () => Promise<{ success: boolean; count?: number; error?: string }>;
+            getStackCount: (options?: { folderId?: number; minRating?: number; colorLabel?: string; keyword?: string }) => Promise<number>;
+            rebuildStackCache: () => Promise<{ success: boolean; count: number }>;
             log: (level: string, message: string, data?: any) => Promise<boolean>;
             extractNefPreview: (filePath: string) => Promise<{
                 success: boolean;
-                buffer?: number[];
-                fallback?: boolean;
-                error?: string;
+                buffer?: Uint8Array;
                 fallback?: boolean;
                 error?: string;
             }>;

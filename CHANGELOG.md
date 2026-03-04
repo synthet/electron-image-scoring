@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.25.0] - 2026-03-03
+
+### Added
+- **Error Boundary**: Added a global `ErrorBoundary` component to catch and display rendering errors gracefully in the UI.
+- **Frontend Refactoring**: Extracted core gallery and sidebar logic from `App.tsx` into a new `AppContent` component for better maintainability and state isolation.
+- **Developer Documentation**: Added `CODE_DESIGN_REVIEW.md` and Gradio integration documentation to `docs/technical/`.
+
+### Changed
+- **Path Handling**: Improved path sanitization and WSL-to-Windows conversion in the `media://` protocol handler to prevent traversal attacks and handle native Windows paths more robustly.
+
+### Fixed
+- **IPC Race Condition**: Resolved an application hang during startup by ensuring all IPC handlers are registered before the Electron window is created.
+- **DB Connection Stability**: Improved reliability of the initial database connection check and event listener setup.
+
 ## [3.24.1] - 2026-02-27
 
 ### Fixed

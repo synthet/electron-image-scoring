@@ -1,47 +1,86 @@
-import { useState, useEffect } from 'react';
-import { Logger } from '../services/Logger';
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+// Maximum number of items to keep in memory
+const MAX_LOADED_ITEMS = 2000;
 
 export function useDatabase() {
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [retryCount, setRetryCount] = useState(0);
+
+    const MAX_AUTO_RETRIES = 3;
+    const BASE_DELAY_MS = 2000;
+
+    const connect = useCallback(async () => {
+        if (!window.electron) {
+            setError("Not running in Electron");
+            return;
+        }
+        setError(null);
+
+        const CONNECT_TIMEOUT_MS = 20000;
+
+        try {
+            await Promise.race([
+                (async () => {
+                    const res = await window.electron.ping();
+                    if (res !== 'pong') {
+                        throw new Error('Main process not responding');
+                    }
+
+                    const dbConnected = await window.electron.checkDbConnection();
+                    if (!dbConnected) {
+                        throw new Error("Database connection returned false");
+                    }
+                })(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error(
+                        `Connection timeout after ${CONNECT_TIMEOUT_MS / 1000}s — is Firebird running?`
+                    )), CONNECT_TIMEOUT_MS)
+                )
+            ]);
+
+            setIsConnected(true);
+            setError(null);
+            setRetryCount(0);
+        } catch (e: any) {
+            setIsConnected(false);
+            const msg = e.message || 'Unknown connection error';
+            console.error(`[useDatabase] Connection attempt failed:`, msg);
+            setError(msg);
+        }
+    }, []);
+
+    // Initial connection + auto-retry with backoff
+    useEffect(() => {
+        connect();
+    }, [connect]);
 
     useEffect(() => {
-        const connect = async () => {
-            if (!window.electron) {
-                setError("Not running in Electron");
-                return;
-            }
-            try {
-                // First ping the main process
-                const res = await window.electron.ping();
-                if (res !== 'pong') {
-                    throw new Error('Main process not responding');
-                }
+        if (error && retryCount < MAX_AUTO_RETRIES) {
+            const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
+            console.log(`[useDatabase] Auto-retry ${retryCount + 1}/${MAX_AUTO_RETRIES} in ${delay}ms...`);
+            const timer = setTimeout(() => {
+                setRetryCount(prev => prev + 1);
+                connect();
+            }, delay);
+            return () => clearTimeout(timer);
+        }
+    }, [error, retryCount, connect]);
 
-                // Then check actual DB connection
-                const dbConnected = await window.electron.checkDbConnection();
-                if (dbConnected) {
-                    setIsConnected(true);
-                    setError(null);
-                } else {
-                    setIsConnected(false);
-                    setError("Database disconnected");
-                }
-            } catch (e: any) {
-                setIsConnected(false);
-                setError(e.message);
-            }
-        };
+    // Manual retry (resets counter)
+    const retry = useCallback(() => {
+        setRetryCount(0);
+        setError(null);
         connect();
-
-    }, []);
+    }, [connect]);
 
     const checkConnection = async () => {
         if (!window.electron) return false;
         return await window.electron.checkDbConnection();
     };
 
-    return { isConnected, error, checkConnection };
+    return { isConnected, error, checkConnection, retry };
 }
 
 export function useImageCount() {
@@ -74,174 +113,157 @@ export function useKeywords() {
     return { keywords, loading };
 }
 
-export function useImages(pageSize: number = 50, folderId?: number, filters?: any) {
-    const [images, setImages] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [hasMore, setHasMore] = useState(true);
-    const [offset, setOffset] = useState(0);
-
-    const [totalCount, setTotalCount] = useState(0);
-
-    // Reset when folder or filters change
-    useEffect(() => {
-        setImages([]);
-        setOffset(0);
-        setHasMore(true);
-
-        // Fetch total count for current filters
-        if (window.electron) {
-            const options = { folderId, ...filters };
-            window.electron.getImageCount(options).then((c: any) => {
-                if (typeof c === 'number') setTotalCount(c);
-            });
-        }
-    }, [folderId, JSON.stringify(filters)]);
-
-    // Fetch function
-    const loadMore = async () => {
-        // #region agent log
-        const _log = (msg: string, d: Record<string, unknown>, h: string) =>
-            Logger.info(msg, { ...d, hypothesisId: h });
-        _log('loadMore called', { offset, hasMore, loading, folderId, pageSize }, 'B');
-        // #endregion
-        if (!window.electron || loading || !hasMore) {
-            // #region agent log
-            _log('loadMore SKIPPED', { reason: !window.electron ? 'no-electron' : loading ? 'loading' : '!hasMore' }, 'E');
-            // #endregion
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const options = { limit: pageSize, offset, folderId, ...filters };
-            const newImages = await window.electron.getImages(options);
-
-            // #region agent log
-            // #region agent log
-            Logger.info('loadMore result', {
-                newImagesLen: newImages.length,
-                pageSize,
-                returnedIds: newImages.map((img: any) => img.id).join(','),
-                firstId: newImages[0]?.id,
-                lastId: newImages[newImages.length - 1]?.id
-            });
-            // #endregion
-            // #endregion
-
-            if (newImages.length < pageSize) {
-                setHasMore(false);
-            }
-
-            setImages(prev => {
-                // Determine if we are appending or resetting based on offset
-                // Actually, due to React closure, 'offset' here is the one from render.
-                // But creating a race condition if multiple quick calls?
-                // Better safety is to rely on functional state updates but 'offset' is external to this closure if not careful.
-                // However, since we trigger loadMore explicitly, we should be okay.
-
-                // Deduplicate just in case? unique by ID
-                const existingIds = new Set(prev.map(p => p.id));
-                const filtered = newImages.filter((img: any) => !existingIds.has(img.id));
-                return [...prev, ...filtered];
-            });
-
-            setOffset(prev => prev + pageSize);
-        } catch (err) {
-            console.error("Failed to load images", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Initial load when folder/filters change (detected by offset === 0 check or just effect)
-    // But we need to distinguish "reset happened" from "load more".
-    // Let's use an effect for the initial load ONLY.
-    useEffect(() => {
-        // When reset happens (images empty, offset 0), trigger load
-        if (offset === 0 && hasMore && !loading) {
-            loadMore();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [offset, folderId, JSON.stringify(filters)]);
-    // We explicitly depend on the reset conditions. 
-    // When the top effect resets offset to 0, this effect fires.
-
-    // Remove image from state (e.g. after delete)
-    const removeImage = (id: number) => {
-        setImages(prev => prev.filter(img => img.id !== id));
-        setTotalCount(prev => Math.max(0, prev - 1));
-    };
-
-    return { images, loading, hasMore, loadMore, totalCount, removeImage };
-}
-
-export function useStacks(pageSize: number = 50, folderId?: number, filters?: any) {
-    const [stacks, setStacks] = useState<any[]>([]);
+/**
+ * Generic hook for paginated data fetching with memory management.
+ */
+function usePaginatedData<T>(
+    pageSize: number,
+    folderId: number | undefined,
+    filters: Record<string, any> | undefined,
+    fetchFunc: (options: any) => Promise<T[]>,
+    countFunc: (options: any) => Promise<number>,
+    getUniqueKey: (item: T) => string | number
+) {
+    const [items, setItems] = useState<T[]>([]);
     const [loading, setLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [offset, setOffset] = useState(0);
     const [totalCount, setTotalCount] = useState(0);
 
-    // Reset when folder or filters change
+    // Use refs to avoid stale closures
+    const offsetRef = useRef(0);
+    const filtersRef = useRef<Record<string, any> | undefined>(filters);
+    const folderIdRef = useRef(folderId);
+
+    // Update refs when deps change
     useEffect(() => {
-        setStacks([]);
+        offsetRef.current = offset;
+    }, [offset]);
+
+    useEffect(() => {
+        filtersRef.current = filters;
+    }, [filters]);
+
+    useEffect(() => {
+        folderIdRef.current = folderId;
+    }, [folderId]);
+
+    // Reset when folder or filters change (shallow comparison)
+    useEffect(() => {
+        setItems([]);
         setOffset(0);
         setHasMore(true);
 
         if (window.electron) {
             const options = { folderId, ...filters };
-            window.electron.getStackCount(options).then((c: any) => {
-                if (typeof c === 'number') setTotalCount(c);
+            countFunc(options).then((c: number) => {
+                setTotalCount(c);
+            }).catch(err => {
+                console.error('Failed to fetch count:', err);
             });
         }
     }, [folderId, JSON.stringify(filters)]);
 
-    const loadMore = async () => {
+    // Load more with memory cap
+    const loadMore = useCallback(async () => {
         if (!window.electron || loading || !hasMore) return;
 
         setLoading(true);
         try {
-            const options = { limit: pageSize, offset, folderId, ...filters };
-            const newStacks = await window.electron.getStacks(options);
+            const options = { limit: pageSize, offset: offsetRef.current, folderId: folderIdRef.current, ...filtersRef.current };
+            const newItems = await fetchFunc(options);
 
-            if (newStacks.length < pageSize) {
+            if (newItems.length < pageSize) {
                 setHasMore(false);
             }
 
-            setStacks(prev => {
-                const existingKeys = new Set(prev.map(s => s.stack_key));
-                const filtered = newStacks.filter((s: any) => !existingKeys.has(s.stack_key));
-                return [...prev, ...filtered];
+            setItems(prev => {
+                // Deduplicate by unique key
+                const existingKeys = new Set(prev.map(item => getUniqueKey(item)));
+                const filtered = newItems.filter(item => !existingKeys.has(getUniqueKey(item)));
+                const merged = [...prev, ...filtered];
+
+                // Trim if exceeds max loaded items
+                if (merged.length > MAX_LOADED_ITEMS) {
+                    const trimmed = merged.slice(merged.length - MAX_LOADED_ITEMS);
+                    return trimmed;
+                }
+
+                return merged;
             });
 
             setOffset(prev => prev + pageSize);
         } catch (err) {
-            console.error("Failed to load stacks", err);
+            console.error("Failed to load data:", err);
         } finally {
             setLoading(false);
         }
-    };
+    }, [pageSize, loading, hasMore, fetchFunc]);
 
+    // Initial load when offset becomes 0
     useEffect(() => {
         if (offset === 0 && hasMore && !loading) {
             loadMore();
         }
-    }, [offset, folderId, JSON.stringify(filters)]);
+    }, [offset, hasMore, loading, loadMore]);
 
-    const refresh = () => {
+    const refresh = useCallback(() => {
         setOffset(0);
-        setStacks([]);
+        setItems([]);
         setHasMore(true);
-        // We will trigger loadMore either by effect (since offset=0) or manually
-        // Since offset might already be 0, we should ensure loadMore runs.
-        // It's safer to just set a timestamp or trigger state, but triggering offset to 0 should work if we rely on the effect. Actually, offset might be 0 already if no data was found.
-        // Let's add a trigger state or just call loadMore directly if offset === 0
-        setOffset(0);
-        setStacks([]);
-        setHasMore(true);
-        // We will force a load by skipping the offset check
+        setLoading(false);
         setTimeout(() => loadMore(), 0);
-    };
+    }, [loadMore]);
 
-    return { stacks, loading, hasMore, loadMore, totalCount, refresh };
+    const removeItem = useCallback((key: string | number) => {
+        setItems(prev => prev.filter(item => getUniqueKey(item) !== key));
+        setTotalCount(prev => Math.max(0, prev - 1));
+    }, [getUniqueKey]);
+
+    return { items, loading, hasMore, loadMore, totalCount, refresh, removeItem };
+}
+
+export function useImages(pageSize: number = 50, folderId?: number, filters?: Record<string, any>) {
+    const result = usePaginatedData(
+        pageSize,
+        folderId,
+        filters,
+        (opts) => window.electron!.getImages(opts),
+        (opts) => window.electron!.getImageCount(opts),
+        (img: any) => img.id
+    );
+
+    // Remove image from state (e.g. after delete)
+    const removeImage = useCallback((id: number) => {
+        result.removeItem(id);
+    }, [result.removeItem]);
+
+    return {
+        images: result.items,
+        loading: result.loading,
+        hasMore: result.hasMore,
+        loadMore: result.loadMore,
+        totalCount: result.totalCount,
+        removeImage
+    };
+}
+
+export function useStacks(pageSize: number = 50, folderId?: number, filters?: Record<string, any>) {
+    const result = usePaginatedData(
+        pageSize,
+        folderId,
+        filters,
+        (opts) => window.electron!.getStacks(opts),
+        (opts) => window.electron!.getStackCount(opts),
+        (stack: any) => stack.stack_key || stack.id
+    );
+
+    return {
+        stacks: result.items,
+        loading: result.loading,
+        hasMore: result.hasMore,
+        loadMore: result.loadMore,
+        totalCount: result.totalCount,
+        refresh: result.refresh
+    };
 }

@@ -303,3 +303,42 @@ export function useStacks(pageSize: number = 50, folderId?: number, filters?: Im
         refresh: result.refresh
     };
 }
+
+export function useSimilarImages(imageId: number | null, limit: number = 20, folderPath?: string, minSimilarity?: number) {
+    const [images, setImages] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!imageId || !window.electron) {
+            setImages([]);
+            return;
+        }
+
+        let isMounted = true;
+        setLoading(true);
+        setError(null);
+
+        window.electron.searchSimilarImages({ imageId, limit, folderPath, minSimilarity })
+            .then(res => {
+                if (isMounted) {
+                    setImages(res.results || []);
+                }
+            })
+            .catch(err => {
+                if (isMounted) {
+                    setError(err.message || 'Failed to fetch similar images');
+                    console.error('[useSimilarImages] Error:', err);
+                }
+            })
+            .finally(() => {
+                if (isMounted) setLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [imageId, limit, folderPath, minSimilarity]);
+
+    return { images, loading, error };
+}

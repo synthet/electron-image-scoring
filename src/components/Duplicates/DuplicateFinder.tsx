@@ -3,7 +3,7 @@ import { useNotificationStore } from '../../store/useNotificationStore';
 import type { Folder } from '../Tree/treeUtils';
 
 interface DuplicateFinderProps {
-    folders: Folder[];
+    currentFolder: Folder | null | undefined;
 }
 
 interface DuplicatePair {
@@ -27,28 +27,14 @@ interface DetailedPair extends DuplicatePair {
     imgB: ImageInfo | null;
 }
 
-export function DuplicateFinder({ folders }: DuplicateFinderProps) {
+export function DuplicateFinder({ currentFolder }: DuplicateFinderProps) {
     const [threshold, setThreshold] = useState<number>(0.98);
-    const [selectedFolderPath, setSelectedFolderPath] = useState<string>('');
     const [isScanning, setIsScanning] = useState(false);
     const [duplicatePairs, setDuplicatePairs] = useState<DuplicatePair[]>([]);
     const [detailedPairs, setDetailedPairs] = useState<DetailedPair[]>([]);
 
     const addNotification = useNotificationStore(state => state.addNotification);
 
-    // Flatten folders for the select dropdown
-    const flattenFolders = (nodes: Folder[], prefix = ''): { id: number, path: string, label: string }[] => {
-        let result: { id: number, path: string, label: string }[] = [];
-        for (const node of nodes) {
-            result.push({ id: node.id, path: node.path, label: prefix + (node.title || node.path) });
-            if (node.children) {
-                result = result.concat(flattenFolders(node.children, prefix + '-- '));
-            }
-        }
-        return result;
-    };
-
-    const flatFolders = flattenFolders(folders);
 
     const handleScan = async () => {
         if (!window.electron?.findNearDuplicates) {
@@ -61,7 +47,7 @@ export function DuplicateFinder({ folders }: DuplicateFinderProps) {
         try {
             const response = await window.electron.findNearDuplicates({
                 threshold,
-                folder_path: selectedFolderPath || undefined,
+                folder_path: currentFolder?.path || undefined,
                 limit: 1000
             });
 
@@ -122,16 +108,12 @@ export function DuplicateFinder({ folders }: DuplicateFinderProps) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '300px' }}>
                     <label style={{ fontSize: '13px', color: '#aaa' }}>Target Folder</label>
-                    <select
-                        value={selectedFolderPath}
-                        onChange={e => setSelectedFolderPath(e.target.value)}
-                        style={{ padding: '8px', backgroundColor: '#444', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
+                    <div
+                        style={{ padding: '8px', backgroundColor: '#444', color: '#fff', border: '1px solid #555', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={currentFolder?.path || 'Whole Library'}
                     >
-                        <option value="">Whole Library</option>
-                        {flatFolders.map(f => (
-                            <option key={f.id} value={f.path}>{f.label}</option>
-                        ))}
-                    </select>
+                        {currentFolder?.path || 'Whole Library'}
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, maxWidth: '300px' }}>

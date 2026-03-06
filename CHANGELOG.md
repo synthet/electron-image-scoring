@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.28.0] - 2026-03-05
+
+### Added
+- **Visual Search**: Added "More Like This" feature to find visually similar images from the image viewer or duplicates finder.
+- **EXIF Metadata Display**: Enhanced the image viewer info panel to display UUID, ISO, Shutter Speed, and Aperture.
+- **Similar Search Drawer**: Added a new sliding drawer for managing visually similar search results.
+
 ## [3.27.0] - 2026-03-05
 
 ### Added

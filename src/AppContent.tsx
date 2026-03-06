@@ -455,7 +455,7 @@ function AppContent({ isConnected }: AppContentProps) {
         content={
           <div style={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
             {currentView === 'duplicates' ? (
-              <DuplicateFinder folders={folders} />
+              <DuplicateFinder currentFolder={currentFolder} />
             ) : (
               <>
                 {stackImagesLoading && (

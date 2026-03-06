@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw, AlertTriangle } from 'lucide-react';
+import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw, AlertTriangle, Search } from 'lucide-react';
+import { SimilarSearchDrawer } from './SimilarSearchDrawer';
 
 interface Image {
     id: number;
@@ -160,8 +161,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         return () => { active = false; };
     }, [image.win_path, image.file_path]);
 
-    // Editing State
+    // Editing & Drawer State
     const [isEditing, setIsEditing] = useState(false);
+    const [isSimilarDrawerOpen, setIsSimilarDrawerOpen] = useState(false);
     const [editForm, setEditForm] = useState({
         title: '',
         description: '',
@@ -477,26 +479,52 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     )}
                 </div>
 
-                {/* Edit Controls */}
-                <div style={{ display: 'flex', gap: 10 }}>
-                    {!isEditing ? (
-                        <>
-                            <button onClick={() => setIsEditing(true)} style={{ flex: 1, padding: 8, background: '#007acc', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                                <Edit2 size={16} /> Edit
-                            </button>
-                            <button onClick={handleDelete} style={{ flex: 1, padding: 8, background: '#d32f2f', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                                <Trash2 size={16} /> Delete
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <button onClick={handleSave} style={{ flex: 1, padding: 8, background: '#43a047', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                                <Save size={16} /> Save
-                            </button>
-                            <button onClick={() => setIsEditing(false)} style={{ flex: 1, padding: 8, background: '#555', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                                <RotateCcw size={16} /> Cancel
-                            </button>
-                        </>
+                {/* Edit & Core Controls */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        {!isEditing ? (
+                            <>
+                                <button onClick={() => setIsEditing(true)} style={{ flex: 1, padding: 8, background: '#007acc', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                    <Edit2 size={16} /> Edit
+                                </button>
+                                <button onClick={handleDelete} style={{ flex: 1, padding: 8, background: '#d32f2f', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                    <Trash2 size={16} /> Delete
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={handleSave} style={{ flex: 1, padding: 8, background: '#43a047', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                    <Save size={16} /> Save
+                                </button>
+                                <button onClick={() => setIsEditing(false)} style={{ flex: 1, padding: 8, background: '#555', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                                    <RotateCcw size={16} /> Cancel
+                                </button>
+                            </>
+                        )}
+                    </div>
+                    {!isEditing && (
+                        <button
+                            onClick={() => setIsSimilarDrawerOpen(true)}
+                            style={{
+                                width: '100%',
+                                padding: '8px',
+                                background: '#333',
+                                color: 'white',
+                                border: '1px solid #555',
+                                borderRadius: 4,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                transition: 'background-color 0.2s',
+                                fontWeight: 500
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#444' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#333' }}
+                        >
+                            <Search size={16} /> Find Similar Images
+                        </button>
                     )}
                 </div>
 
@@ -778,6 +806,21 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     </>
                 )}
             </div>
+
+            <SimilarSearchDrawer
+                open={isSimilarDrawerOpen}
+                onClose={() => setIsSimilarDrawerOpen(false)}
+                queryImageId={image.id}
+                onSelectImage={(id) => {
+                    const idx = allImages.findIndex(img => img.id === id);
+                    if (idx >= 0 && onNavigate) {
+                        onNavigate(idx);
+                        // Optionally close drawer or keep it open
+                    } else {
+                        alert('Image not found in current view');
+                    }
+                }}
+            />
         </div>
     );
 };

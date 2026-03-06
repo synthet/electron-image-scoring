@@ -298,6 +298,36 @@ app.whenReady().then(async () => {
         }
     }));
 
+    ipcMain.handle('mcp:search-similar', wrapIpcHandler(async (_, options) => {
+        console.log(`[Main] Finding similar images via backend API`, options);
+        try {
+            const { imageId, limit = 20, folderPath, minSimilarity } = options;
+            if (!imageId) throw new Error("image_id is required");
+
+            const url = new URL('http://127.0.0.1:7860/api/similar');
+            url.searchParams.append('image_id', imageId.toString());
+            url.searchParams.append('limit', limit.toString());
+            if (folderPath) url.searchParams.append('folder_path', folderPath);
+            if (minSimilarity !== undefined) url.searchParams.append('min_similarity', minSimilarity.toString());
+
+            const response = await net.fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API returned HTTP ${response.status}: ${errorText}`);
+            }
+            const data = await response.json();
+            return data;
+        } catch (e: unknown) {
+            console.error('[Main] Failed to fetch similar images from backend:', e);
+            throw e; // Rethrow so wrapIpcHandler formats it 
+        }
+    }));
+
     ipcMain.handle('db:get-stacks', wrapIpcHandler(async (_, options) => {
         return await db.getStacks(options);
     }));

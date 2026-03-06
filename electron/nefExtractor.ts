@@ -55,9 +55,10 @@ export class NefExtractor {
             await fs.unlink(tempJpeg).catch(() => { }); // Ignore cleanup errors
 
             return buffer;
-        } catch (e: any) {
+        } catch (e: unknown) {
             // Log the actual error message for debugging
-            const errorMsg = e.code === 'ENOENT' ? `File not found - ${nefPath}` : e.message;
+            const err = e instanceof Error ? e : new Error(String(e));
+            const errorMsg = (e as NodeJS.ErrnoException)?.code === 'ENOENT' ? `File not found - ${nefPath}` : err.message;
             console.warn(`[NefExtractor] ✗ Tier 1 failed: ${errorMsg}`);
 
             // Cleanup temp file if it exists

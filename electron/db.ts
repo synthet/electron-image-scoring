@@ -1,7 +1,7 @@
 import Firebird from 'node-firebird';
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
+
 import { spawn } from 'child_process';
 import net from 'net';
 
@@ -157,7 +157,7 @@ function isPortOpen(port: number, host: string = '127.0.0.1'): Promise<boolean> 
             socket.destroy();
             resolve(false);
         });
-        socket.on('error', (err) => {
+        socket.on('error', () => {
             socket.destroy();
             resolve(false);
         });
@@ -240,7 +240,7 @@ export async function checkConnection(): Promise<boolean> {
 // which has been observed to trigger internal driver errors in node-firebird.
 let queryChain: Promise<unknown> = Promise.resolve();
 
-async function executeQuery<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+async function executeQuery<T = unknown>(sql: string, params: (string | number | null)[] = []): Promise<T[]> {
     try {
         const db = await getConnection();
 
@@ -261,7 +261,7 @@ async function executeQuery<T = any>(sql: string, params: any[] = []): Promise<T
     }
 }
 
-export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+export async function query<T = unknown>(sql: string, params: (string | number | null)[] = []): Promise<T[]> {
     const run = () => executeQuery<T>(sql, params);
 
     // Schedule this query to run after all previous queries complete,
@@ -279,8 +279,8 @@ export async function query<T = any>(sql: string, params: any[] = []): Promise<T
 }
 
 export async function runTransaction<T>(
-    callback: (tx: Firebird.Transaction, txQuery: <R = any>(sql: string, params?: any[]) => Promise<R[]>) => Promise<T>,
-    isolation: any = Firebird.ISOLATION_READ_COMMITTED
+    callback: (tx: Firebird.Transaction, txQuery: <R = unknown>(sql: string, params?: (string | number | null)[]) => Promise<R[]>) => Promise<T>,
+    isolation: Firebird.Isolation = Firebird.ISOLATION_READ_COMMITTED
 ): Promise<T> {
     try {
         const db = await getConnection();
@@ -293,7 +293,7 @@ export async function runTransaction<T>(
                     return reject(err);
                 }
 
-                const txQuery = <R = any>(sql: string, params: any[] = []): Promise<R[]> => {
+                const txQuery = <R = unknown>(sql: string, params: (string | number | null)[] = []): Promise<R[]> => {
                     return new Promise((qResolve, qReject) => {
                         transaction.query(sql, params, (qErr, result) => {
                             if (qErr) return qReject(qErr);
@@ -327,7 +327,7 @@ export async function runTransaction<T>(
 
 export async function getImageCount(options: ImageQueryOptions = {}): Promise<number> {
     const { folderId, minRating, colorLabel, keyword } = options;
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
     if (folderId) {
@@ -367,9 +367,9 @@ export interface ImageQueryOptions {
     order?: 'ASC' | 'DESC';
 }
 
-export async function getImages(options: ImageQueryOptions = {}): Promise<any[]> {
+export async function getImages(options: ImageQueryOptions = {}): Promise<unknown[]> {
     const { limit = 50, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
     if (folderId) {
@@ -444,14 +444,14 @@ export async function getKeywords(): Promise<string[]> {
     console.log('[DB] Executing getKeywords SQL:', sql);
 
     try {
-        let rows = await query<any>(sql);
+        let rows = await query<{ keywords: string | Buffer; KEYWORDS?: string | Buffer; KEYWORDS_1?: string | Buffer }>(sql);
         console.log(`[DB] getKeywords returned ${rows.length} rows`);
 
         // Fallback if CAST returns nothing but plain query might work (unlikely but safe)
         if (rows.length === 0) {
             console.log('[DB] CAST query returned 0 rows. Retrying with raw BLOB query...');
             sql = `SELECT keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
-            rows = await query<any>(sql);
+            rows = await query<{ keywords: string | Buffer; KEYWORDS?: string | Buffer; KEYWORDS_1?: string | Buffer }>(sql);
             console.log(`[DB] Fallback query returned ${rows.length} rows`);
         }
 
@@ -488,7 +488,41 @@ export async function getKeywords(): Promise<string[]> {
     }
 }
 
-export async function getImageDetails(id: number): Promise<any> {
+interface ImageDetailRow {
+    id: number;
+    job_id?: string;
+    file_path: string;
+    file_name: string;
+    file_type?: string;
+    score?: number;
+    score_general?: number;
+    score_technical?: number;
+    score_aesthetic?: number;
+    score_spaq?: number;
+    score_ava?: number;
+    score_liqe?: number;
+    score_koniq?: number;
+    score_paq2piq?: number;
+    rating?: number;
+    label?: string;
+    title?: string;
+    description?: string;
+    keywords?: string;
+    metadata?: string;
+    scores_json?: string;
+    model_version?: string;
+    image_hash?: string;
+    folder_id?: number;
+    stack_id?: number;
+    burst_uuid?: string;
+    created_at?: string;
+    thumbnail_path?: string;
+    win_path?: string | null;
+    file_exists?: boolean;
+    image_uuid?: string;
+}
+
+export async function getImageDetails(id: number): Promise<ImageDetailRow | null> {
     const sql = `
         SELECT 
             i.id,
@@ -519,6 +553,7 @@ export async function getImageDetails(id: number): Promise<any> {
             i.stack_id,
             i.created_at,
             i.burst_uuid,
+            i.image_uuid,
             fp.path as win_path
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
@@ -531,7 +566,7 @@ export async function getImageDetails(id: number): Promise<any> {
         return null;
     }
 
-    const image = rows[0];
+    const image: ImageDetailRow = rows[0] as ImageDetailRow;
 
     // Discard win_path if it's actually a thumbnail path (bad data in file_paths table)
     if (image.win_path && image.file_name) {
@@ -589,7 +624,7 @@ export async function getImageDetails(id: number): Promise<any> {
     return JSON.parse(stringified);
 }
 
-export async function getFolders(): Promise<any[]> {
+export async function getFolders(): Promise<unknown[]> {
     const rows = await query(`
         SELECT f.id, f.path, f.parent_id, f.is_fully_scored,
                (SELECT COUNT(1) FROM images i WHERE i.folder_id = f.id) as image_count
@@ -611,10 +646,10 @@ export async function deleteFolder(id: number): Promise<boolean> {
     }
 }
 
-export async function updateImageDetails(id: number, updates: any): Promise<boolean> {
+export async function updateImageDetails(id: number, updates: Record<string, string | number | null>): Promise<boolean> {
     const allowedFields = ['title', 'description', 'rating', 'label', 'keywords'];
     const setParts: string[] = [];
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
 
     for (const field of allowedFields) {
         if (updates[field] !== undefined) {
@@ -637,8 +672,9 @@ export async function updateImageDetails(id: number, updates: any): Promise<bool
     }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface StackQueryOptions extends ImageQueryOptions {
-    // inherits all filter options from ImageQueryOptions
+    // Intentional named alias — inherits all filter options from ImageQueryOptions
 }
 
 // ---- Stack Cache ----
@@ -789,7 +825,7 @@ export async function rebuildStackCache(): Promise<number> {
     return rebuildPromise;
 }
 
-export async function getStacks(options: StackQueryOptions = {}): Promise<any[]> {
+export async function getStacks(options: StackQueryOptions = {}): Promise<unknown[]> {
     const { limit = 50, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
 
     await ensureStackCacheTable();
@@ -820,8 +856,8 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<any[]>
     const nonStackSortCol = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
 
     // Params for the union query (need to push them twice, once for top half, once for bottom)
-    const topParams: any[] = [];
-    const botParams: any[] = [];
+    const topParams: (string | number | null)[] = [];
+    const botParams: (string | number | null)[] = [];
     const wherePartsCache: string[] = [];
     const wherePartsNonStack: string[] = ['i.stack_id IS NULL'];
 
@@ -918,9 +954,9 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<any[]>
     return query(sql, [...topParams, ...botParams, offset, limit]);
 }
 
-export async function getImagesByStack(stackId: number | null, options: ImageQueryOptions = {}): Promise<any[]> {
+export async function getImagesByStack(stackId: number | null, options: ImageQueryOptions = {}): Promise<unknown[]> {
     const { limit = 200, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
     if (stackId !== null && stackId !== undefined) {
@@ -988,7 +1024,7 @@ export async function getImagesByStack(stackId: number | null, options: ImageQue
 
 export async function getStackCount(options: StackQueryOptions = {}): Promise<number> {
     const { folderId, minRating, colorLabel, keyword } = options;
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
     if (folderId) {
@@ -1066,7 +1102,7 @@ export async function deleteImage(id: number): Promise<boolean> {
             } else {
                 console.warn('[DB] File does not exist on disk, skipping file deletion');
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error('[DB] Failed to delete file:', e);
             // We should probably stop if file deletion fails to avoid consistency issues?
             // Or should we allow "force delete"? 

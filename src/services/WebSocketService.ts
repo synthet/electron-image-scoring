@@ -1,9 +1,9 @@
 interface WebSocketMessage {
     type: string;
-    data: any;
+    data: unknown;
 }
 
-type MessageHandler = (data: any) => void;
+type MessageHandler = (data: unknown) => void;
 
 class WebSocketService {
     private ws: WebSocket | null = null;
@@ -126,7 +126,7 @@ class WebSocketService {
         this.handlers.get(type)?.delete(handler);
     }
 
-    private dispatch(type: string, data: any) {
+    private dispatch(type: string, data: unknown) {
         const handlers = this.handlers.get(type);
         if (handlers) {
             handlers.forEach(handler => handler(data));

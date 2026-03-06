@@ -7,7 +7,9 @@
       "mcp__mcp-firebird__system-health-check",
       "mcp__electron-debug__get_electron_logs",
       "mcp__mcp-firebird__execute-query",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "mcp__filesystem__list_directory",
+      "mcp__image-scoring__get_config"
     ]
   }
 }

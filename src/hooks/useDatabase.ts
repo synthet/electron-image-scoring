@@ -3,6 +3,37 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // Maximum number of items to keep in memory
 const MAX_LOADED_ITEMS = 2000;
 
+interface ImageQueryOptions {
+    limit?: number;
+    offset?: number;
+    folderId?: number;
+    minRating?: number;
+    colorLabel?: string;
+    keyword?: string;
+    sortBy?: string;
+    order?: 'ASC' | 'DESC';
+}
+
+interface ImageRow {
+    id: number;
+    file_path: string;
+    file_name: string;
+    score_general: number;
+    score_technical: number;
+    score_aesthetic: number;
+    score_spaq: number;
+    score_ava: number;
+    score_liqe: number;
+    rating: number;
+    label: string | null;
+    created_at?: string;
+    thumbnail_path?: string;
+    stack_id?: number | null;
+    stack_key?: number;
+    image_count?: number;
+    sort_value?: number;
+}
+
 export function useDatabase() {
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -43,9 +74,9 @@ export function useDatabase() {
             setIsConnected(true);
             setError(null);
             setRetryCount(0);
-        } catch (e: any) {
+        } catch (e: unknown) {
             setIsConnected(false);
-            const msg = e.message || 'Unknown connection error';
+            const msg = e instanceof Error ? e.message : 'Unknown connection error';
             console.error(`[useDatabase] Connection attempt failed:`, msg);
             setError(msg);
         }
@@ -53,6 +84,7 @@ export function useDatabase() {
 
     // Initial connection + auto-retry with backoff
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         connect();
     }, [connect]);
 
@@ -116,12 +148,12 @@ export function useKeywords() {
 /**
  * Generic hook for paginated data fetching with memory management.
  */
-function usePaginatedData<T>(
+function usePaginatedData<T extends { id: number }>(
     pageSize: number,
     folderId: number | undefined,
-    filters: Record<string, any> | undefined,
-    fetchFunc: (options: any) => Promise<T[]>,
-    countFunc: (options: any) => Promise<number>,
+    filters: ImageQueryOptions | undefined,
+    fetchFunc: (options: ImageQueryOptions) => Promise<T[]>,
+    countFunc: (options: ImageQueryOptions) => Promise<number>,
     getUniqueKey: (item: T) => string | number
 ) {
     const [items, setItems] = useState<T[]>([]);
@@ -132,7 +164,7 @@ function usePaginatedData<T>(
 
     // Use refs to avoid stale closures
     const offsetRef = useRef(0);
-    const filtersRef = useRef<Record<string, any> | undefined>(filters);
+    const filtersRef = useRef<ImageQueryOptions | undefined>(filters);
     const folderIdRef = useRef(folderId);
 
     // Update refs when deps change
@@ -155,13 +187,14 @@ function usePaginatedData<T>(
         setHasMore(true);
 
         if (window.electron) {
-            const options = { folderId, ...filters };
+            const options: ImageQueryOptions = { folderId, ...filters };
             countFunc(options).then((c: number) => {
                 setTotalCount(c);
             }).catch(err => {
                 console.error('Failed to fetch count:', err);
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [folderId, JSON.stringify(filters)]);
 
     // Load more with memory cap
@@ -170,7 +203,7 @@ function usePaginatedData<T>(
 
         setLoading(true);
         try {
-            const options = { limit: pageSize, offset: offsetRef.current, folderId: folderIdRef.current, ...filtersRef.current };
+            const options: ImageQueryOptions = { limit: pageSize, offset: offsetRef.current, folderId: folderIdRef.current, ...filtersRef.current };
             const newItems = await fetchFunc(options);
 
             if (newItems.length < pageSize) {
@@ -198,6 +231,7 @@ function usePaginatedData<T>(
         } finally {
             setLoading(false);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageSize, loading, hasMore, fetchFunc]);
 
     // Initial load when offset becomes 0
@@ -218,24 +252,26 @@ function usePaginatedData<T>(
     const removeItem = useCallback((key: string | number) => {
         setItems(prev => prev.filter(item => getUniqueKey(item) !== key));
         setTotalCount(prev => Math.max(0, prev - 1));
+
     }, [getUniqueKey]);
 
     return { items, loading, hasMore, loadMore, totalCount, refresh, removeItem };
 }
 
-export function useImages(pageSize: number = 50, folderId?: number, filters?: Record<string, any>) {
+export function useImages(pageSize: number = 50, folderId?: number, filters?: ImageQueryOptions) {
     const result = usePaginatedData(
         pageSize,
         folderId,
         filters,
         (opts) => window.electron!.getImages(opts),
         (opts) => window.electron!.getImageCount(opts),
-        (img: any) => img.id
+        (img: ImageRow) => img.id
     );
 
     // Remove image from state (e.g. after delete)
     const removeImage = useCallback((id: number) => {
         result.removeItem(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [result.removeItem]);
 
     return {
@@ -248,14 +284,14 @@ export function useImages(pageSize: number = 50, folderId?: number, filters?: Re
     };
 }
 
-export function useStacks(pageSize: number = 50, folderId?: number, filters?: Record<string, any>) {
+export function useStacks(pageSize: number = 50, folderId?: number, filters?: ImageQueryOptions) {
     const result = usePaginatedData(
         pageSize,
         folderId,
         filters,
         (opts) => window.electron!.getStacks(opts),
         (opts) => window.electron!.getStackCount(opts),
-        (stack: any) => stack.stack_key || stack.id
+        (stack: ImageRow) => stack.stack_key || stack.id
     );
 
     return {

@@ -6,11 +6,11 @@ interface Image {
     file_path: string;
     file_name: string;
     score_general: number;
-    score_technical: number;
-    score_aesthetic: number;
-    score_spaq: number;
-    score_ava: number;
-    score_liqe: number;
+    score_technical?: number;
+    score_aesthetic?: number;
+    score_spaq?: number;
+    score_ava?: number;
+    score_liqe?: number;
     rating: number;
     label: string | null;
     created_at?: string;
@@ -18,12 +18,13 @@ interface Image {
     title?: string;
     description?: string;
     keywords?: string;
-    stack_id?: number;
+    stack_id?: number | null;
     burst_uuid?: string;
     job_id?: string;
     folder_id?: number;
     win_path?: string;
     file_exists?: boolean;
+    image_uuid?: string;
 }
 
 interface ImageViewerProps {
@@ -57,6 +58,15 @@ const ScoreBar = ({ label, value, color = '#ff9800' }: { label: string, value: n
     </div>
 );
 
+interface ExifData {
+    ISO?: number;
+    ShutterSpeed?: string;
+    Aperture?: number;
+    FocalLength?: string;
+    Model?: string;
+    LensModel?: string;
+}
+
 export const ImageViewer: React.FC<ImageViewerProps> = ({
     image: initialImage,
     onClose,
@@ -67,6 +77,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 }) => {
     const [image, setImage] = React.useState<Image>(initialImage);
     const [detailsLoaded, setDetailsLoaded] = React.useState(false);
+    const [exifData, setExifData] = React.useState<ExifData | null>(null);
+    const [exifLoading, setExifLoading] = React.useState(false);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -113,6 +125,40 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         fetchDetails();
         return () => { active = false; };
     }, [image.id]);
+
+    // Lazy load EXIF data
+    useEffect(() => {
+        let active = true;
+        setExifData(null);
+
+        const fetchExif = async () => {
+            if (!window.electron) return;
+            const pathSchema = image.win_path || image.file_path;
+            if (!pathSchema) return;
+
+            setExifLoading(true);
+            try {
+                const exif = await window.electron.readExif(pathSchema);
+                if (active && exif) {
+                    setExifData({
+                        ISO: exif.ISO,
+                        ShutterSpeed: exif.ShutterSpeed,
+                        Aperture: exif.Aperture,
+                        FocalLength: exif.FocalLength,
+                        Model: exif.Model,
+                        LensModel: exif.LensModel
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to parse lazy EXIF', e);
+            } finally {
+                if (active) setExifLoading(false);
+            }
+        };
+
+        fetchExif();
+        return () => { active = false; };
+    }, [image.win_path, image.file_path]);
 
     // Editing State
     const [isEditing, setIsEditing] = useState(false);
@@ -577,12 +623,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 15, color: '#ddd' }}>Model Scores</div>
 
                             <ScoreBar label="General" value={image.score_general} color="#ff5722" />
-                            <ScoreBar label="Technical" value={image.score_technical} />
-                            <ScoreBar label="Aesthetic" value={image.score_aesthetic} />
+                            <ScoreBar label="Technical" value={image.score_technical ?? 0} />
+                            <ScoreBar label="Aesthetic" value={image.score_aesthetic ?? 0} />
 
-                            {image.score_spaq > 0 && <ScoreBar label="SPAQ" value={image.score_spaq} />}
-                            {image.score_ava > 0 && <ScoreBar label="AVA" value={image.score_ava} />}
-                            {image.score_liqe > 0 && <ScoreBar label="LIQE" value={image.score_liqe} />}
+                            {(image.score_spaq ?? 0) > 0 && <ScoreBar label="SPAQ" value={image.score_spaq ?? 0} />}
+                            {(image.score_ava ?? 0) > 0 && <ScoreBar label="AVA" value={image.score_ava ?? 0} />}
+                            {(image.score_liqe ?? 0) > 0 && <ScoreBar label="LIQE" value={image.score_liqe ?? 0} />}
                         </div>
 
                         {/* Stack/Burst Info */}
@@ -616,6 +662,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                                     <span style={{ color: '#888' }}>Image ID:</span>
                                     <span>{image.id}</span>
                                 </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <span style={{ color: '#888' }}>Image UUID:</span>
+                                    <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
+                                        {image.image_uuid || 'None'}
+                                    </span>
+                                </div>
                                 {image.job_id && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ color: '#888' }}>Job ID:</span>
@@ -629,6 +681,47 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                                     </div>
                                 )}
                             </div>
+                        </div>
+
+                        {/* EXIF Info */}
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Photography Stats</div>
+                            {exifLoading ? (
+                                <div style={{ fontSize: '0.8em', color: '#666', fontStyle: 'italic' }}>Loading camera data...</div>
+                            ) : exifData ? (
+                                <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>ISO:</span>
+                                        <span>{exifData.ISO || 'Unknown'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Shutter:</span>
+                                        <span>{exifData.ShutterSpeed ? `${exifData.ShutterSpeed}s` : 'Unknown'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Aperture:</span>
+                                        <span>{exifData.Aperture ? `f/${exifData.Aperture}` : 'Unknown'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Focal Length:</span>
+                                        <span>{exifData.FocalLength || 'Unknown'}</span>
+                                    </div>
+                                    {exifData.Model && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                                            <span style={{ color: '#888' }}>Camera:</span>
+                                            <span style={{ color: '#ccc' }}>{exifData.Model}</span>
+                                        </div>
+                                    )}
+                                    {exifData.LensModel && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <span style={{ color: '#888' }}>Lens:</span>
+                                            <span style={{ color: '#ccc', fontSize: '0.9em' }}>{exifData.LensModel}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '0.8em', color: '#666' }}>No EXIF data found</div>
+                            )}
                         </div>
 
                         {/* Keywords / Tags (after Database Info) */}

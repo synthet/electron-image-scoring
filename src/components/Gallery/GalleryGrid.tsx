@@ -46,7 +46,7 @@ interface GalleryGridProps {
     activeStackId?: number | null;
 }
 
-const ItemContainer = React.forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
+const ItemContainer = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, children, ...props }, ref) => (
     <div
         ref={ref}
         style={{
@@ -61,7 +61,7 @@ const ItemContainer = React.forwardRef<HTMLDivElement, any>(({ style, children, 
     </div>
 ));
 
-const ItemWrapper = React.forwardRef<HTMLDivElement, any>(({ children, ...props }, ref) => (
+const ItemWrapper = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ children, ...props }, ref) => (
     <div
         ref={ref}
         style={{
@@ -285,9 +285,8 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
         endReachedHandler?.();
     }, [endReachedHandler]);
 
-    const handleAtBottomChange = useCallback((_atBottom: boolean) => {
-        // no-op, available for future use
-    }, []);
+
+
 
     if (displayData.length === 0 && subfolders && subfolders.length > 0) {
         return (
@@ -348,7 +347,7 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
                 totalCount={displayData.length}
                 overscan={400} // Increase overscan further to prevent blank areas during fast scrolling
                 endReached={handleEndReached}
-                atBottomStateChange={handleAtBottomChange}
+                atBottomStateChange={() => { }}
                 components={gridComponents}
                 itemContent={itemContent}
             />

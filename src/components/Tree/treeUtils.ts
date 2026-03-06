@@ -9,7 +9,15 @@ export interface Folder {
     children?: Folder[];
 }
 
-export function buildFolderTree(folders: any[]): Folder[] {
+interface FolderRow {
+    id: number;
+    path: string;
+    parent_id: number | null;
+    is_fully_scored: number;
+    image_count: number;
+}
+
+export function buildFolderTree(folders: FolderRow[]): Folder[] {
     const map = new Map<number, Folder>();
     const roots: Folder[] = [];
 

@@ -1,18 +1,22 @@
 {
-    "database": {
-        "host": "127.0.0.1",
-        "port": 3050,
-        "user": "sysdba",
-        "password": "masterkey",
-        "path": "d:\\Projects\\image-scoring\\SCORING_HISTORY.FDB"
-    },
-    "dev": {
-        "url": "http://localhost:5173"
-    },
-    "api": {
-        "url": "http://127.0.0.1:7860"
-    },
-    "firebird": {
-        "path": "d:\\Projects\\image-scoring\\Firebird"
-    }
+  "database": {
+    "host": "127.0.0.1",
+    "port": 3050,
+    "user": "sysdba",
+    "password": "masterkey",
+    "path": "d:\\Projects\\image-scoring\\SCORING_HISTORY.FDB"
+  },
+  "dev": {
+    "url": "http://localhost:5173"
+  },
+  "api": {
+    "url": "http://127.0.0.1:7860"
+  },
+  "firebird": {
+    "path": "d:\\Projects\\image-scoring\\Firebird"
+  },
+  "selection": {
+    "diversity_enabled": true,
+    "diversity_lambda": 0.7
+  }
 }

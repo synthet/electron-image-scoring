@@ -1,6 +1,6 @@
 export class ApiClient {
     private ws: WebSocket | null = null;
-    private listeners: { [key: string]: ((data: any) => void)[] } = {};
+    private listeners: { [key: string]: ((data: unknown) => void)[] } = {};
     private reconnectAttempts: number = 0;
     private maxReconnectAttempts: number = 50;
     private minReconnectInterval: number = 1000; // 1 second
@@ -58,7 +58,7 @@ export class ApiClient {
 
         this.ws.onmessage = (event) => {
             try {
-                const message = JSON.parse(event.data);
+                const message = JSON.parse(event.data) as { type?: string; data?: unknown };
                 if (message.type && this.listeners[message.type]) {
                     this.listeners[message.type].forEach(callback => callback(message.data));
                 }
@@ -112,14 +112,14 @@ export class ApiClient {
         console.log('[ApiClient] Disconnected');
     }
 
-    public on(eventType: string, callback: (data: any) => void) {
+    public on(eventType: string, callback: (data: unknown) => void) {
         if (!this.listeners[eventType]) {
             this.listeners[eventType] = [];
         }
         this.listeners[eventType].push(callback);
     }
 
-    public off(eventType: string, callback: (data: any) => void) {
+    public off(eventType: string, callback: (data: unknown) => void) {
         if (this.listeners[eventType]) {
             this.listeners[eventType] = this.listeners[eventType].filter(cb => cb !== callback);
         }

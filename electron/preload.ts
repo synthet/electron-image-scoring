@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ImageQueryOptions, ImageRow, ImageDetail, ImageUpdates, FolderRow, DuplicateResponse, AppConfig } from './types';
 
 /**
  * Unwraps IPC envelope responses.
@@ -18,19 +19,19 @@ contextBridge.exposeInMainWorld('electron', {
         const response = await ipcRenderer.invoke('db:check-connection');
         return unwrapEnvelope<boolean>(response);
     },
-    getImageCount: async (options?: any) => {
+    getImageCount: async (options?: ImageQueryOptions) => {
         const response = await ipcRenderer.invoke('db:get-image-count', options);
         return unwrapEnvelope<number>(response);
     },
-    getImages: async (options?: any) => {
+    getImages: async (options?: ImageQueryOptions) => {
         const response = await ipcRenderer.invoke('db:get-images', options);
-        return unwrapEnvelope<any[]>(response);
+        return unwrapEnvelope<ImageRow[]>(response);
     },
     getImageDetails: async (id: number) => {
         const response = await ipcRenderer.invoke('db:get-image-details', id);
-        return unwrapEnvelope<any>(response);
+        return unwrapEnvelope<ImageDetail | null>(response);
     },
-    updateImageDetails: async (id: number, updates: any) => {
+    updateImageDetails: async (id: number, updates: ImageUpdates) => {
         const response = await ipcRenderer.invoke('db:update-image-details', { id, updates });
         return unwrapEnvelope<boolean>(response);
     },
@@ -44,21 +45,25 @@ contextBridge.exposeInMainWorld('electron', {
     },
     getFolders: async () => {
         const response = await ipcRenderer.invoke('db:get-folders');
-        return unwrapEnvelope<any[]>(response);
+        return unwrapEnvelope<FolderRow[]>(response);
     },
     getKeywords: async () => {
         const response = await ipcRenderer.invoke('db:get-keywords');
         return unwrapEnvelope<string[]>(response);
     },
-    getStacks: async (options?: any) => {
+    findNearDuplicates: async (options?: { threshold?: number; folder_path?: string; limit?: number }) => {
+        // Find duplicates doesn't use standard DB envelope
+        return await ipcRenderer.invoke('mcp-find-duplicates', options) as DuplicateResponse;
+    },
+    getStacks: async (options?: ImageQueryOptions) => {
         const response = await ipcRenderer.invoke('db:get-stacks', options);
-        return unwrapEnvelope<any[]>(response);
+        return unwrapEnvelope<ImageRow[]>(response);
     },
-    getImagesByStack: async (stackId: number | null, options?: any) => {
+    getImagesByStack: async (stackId: number | null, options?: ImageQueryOptions) => {
         const response = await ipcRenderer.invoke('db:get-images-by-stack', { stackId, options });
-        return unwrapEnvelope<any[]>(response);
+        return unwrapEnvelope<ImageRow[]>(response);
     },
-    getStackCount: async (options?: any) => {
+    getStackCount: async (options?: ImageQueryOptions) => {
         const response = await ipcRenderer.invoke('db:get-stack-count', options);
         return unwrapEnvelope<number>(response);
     },
@@ -66,7 +71,7 @@ contextBridge.exposeInMainWorld('electron', {
         const response = await ipcRenderer.invoke('db:rebuild-stack-cache');
         return unwrapEnvelope<{ success: boolean; count: number }>(response);
     },
-    log: async (level: string, message: string, data?: any) => {
+    log: async (level: string, message: string, data?: unknown) => {
         return ipcRenderer.invoke('debug:log', { level, message, data, timestamp: Date.now() });
     },
     extractNefPreview: async (filePath: string) => {
@@ -80,7 +85,33 @@ contextBridge.exposeInMainWorld('electron', {
     getApiConfig: async () => {
         return ipcRenderer.invoke('system:get-api-config');
     },
+    getConfig: async () => {
+        const response = await ipcRenderer.invoke('system:get-config');
+        return unwrapEnvelope<AppConfig>(response);
+    },
+    saveConfig: async (updates: Partial<AppConfig>) => {
+        const response = await ipcRenderer.invoke('system:save-config', updates);
+        return unwrapEnvelope<AppConfig>(response);
+    },
     setCurrentExportImageContext: async (context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => {
         return ipcRenderer.invoke('export:set-current-image-context', context);
+    },
+    readExif: async (filePath: string) => {
+        const response = await ipcRenderer.invoke('nef:read-exif', filePath);
+        return unwrapEnvelope<any>(response);
+    },
+    onOpenSettings: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on('open-settings', handler);
+        return () => {
+            ipcRenderer.removeListener('open-settings', handler);
+        };
+    },
+    onOpenDuplicates: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on('open-duplicates', handler);
+        return () => {
+            ipcRenderer.removeListener('open-duplicates', handler);
+        };
     },
 });

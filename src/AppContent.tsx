@@ -10,6 +10,28 @@ import type { FilterState } from './components/Sidebar/FilterPanel';
 import { ImageViewer } from './components/Viewer/ImageViewer';
 import { useNotificationStore } from './store/useNotificationStore';
 import { NotificationTray } from './components/Layout/NotificationTray';
+import { SettingsModal } from './components/Settings/SettingsModal';
+import { DuplicateFinder } from './components/Duplicates/DuplicateFinder';
+
+interface ImageRow {
+  id: number;
+  file_path: string;
+  file_name: string;
+  score_general: number;
+  score_technical?: number;
+  score_aesthetic?: number;
+  score_spaq?: number;
+  score_ava?: number;
+  score_liqe?: number;
+  rating: number;
+  label: string | null;
+  created_at?: string;
+  thumbnail_path?: string;
+  stack_id?: number | null;
+  stack_key?: number;
+  image_count?: number;
+  sort_value?: number;
+}
 
 interface AppContentProps {
   isConnected: boolean;
@@ -23,8 +45,32 @@ function AppContent({ isConnected }: AppContentProps) {
 
   const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({ minRating: 0, sortBy: 'score_general', order: 'DESC' });
-  const [openingImage, setOpeningImage] = useState<any | null>(null);
+  const [openingImage, setOpeningImage] = useState<ImageRow | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
+  const [currentView, setCurrentView] = useState<'gallery' | 'duplicates'>('gallery');
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  useEffect(() => {
+    // Register settings menu listener
+    let cleanupSettings: (() => void) | undefined;
+    if (window.electron?.onOpenSettings) {
+      cleanupSettings = window.electron.onOpenSettings(() => {
+        setIsSettingsOpen(true);
+      });
+    }
+
+    let cleanupDuplicates: (() => void) | undefined;
+    if (window.electron?.onOpenDuplicates) {
+      cleanupDuplicates = window.electron.onOpenDuplicates(() => {
+        setCurrentView('duplicates');
+      });
+    }
+
+    return () => {
+      if (cleanupSettings) cleanupSettings();
+      if (cleanupDuplicates) cleanupDuplicates();
+    };
+  }, []);
 
   // Stacks mode state
   const [stacksMode, setStacksMode] = useState(false);
@@ -35,7 +81,7 @@ function AppContent({ isConnected }: AppContentProps) {
   const { images, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, filters);
   const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount, refresh: refreshStacks } = useStacks(50, selectedFolderId, filters);
 
-  const [stackImages, setStackImages] = useState<any[]>([]);
+  const [stackImages, setStackImages] = useState<ImageRow[]>([]);
   const [stackImagesLoading, setStackImagesLoading] = useState(false);
 
   // Rebuild stack cache when stacks mode is first enabled
@@ -75,15 +121,16 @@ function AppContent({ isConnected }: AppContentProps) {
 
   // Subscribe to real-time updates from Python API
   useEffect(() => {
-    let ws: any = null;
+    let ws: { connect: () => void; disconnect: () => void; on: (type: string, handler: (data: unknown) => void) => void } | null = null;
 
     import('./services/WebSocketService').then(({ webSocketService }) => {
       ws = webSocketService;
       ws.connect();
 
-      ws.on('stack_created', (data: any) => {
-        console.log('[App] Received stack_created event:', data);
-        addNotification(`New stack created: ${data.summary || 'Summary not available'}`, 'success');
+      ws.on('stack_created', (data: unknown) => {
+        const d = data as { summary?: string };
+        console.log('[App] Received stack_created event:', d);
+        addNotification(`New stack created: ${d.summary || 'Summary not available'}`, 'success');
         if (window.electron) {
           window.electron.rebuildStackCache().then(() => {
             console.log('[App] Stack cache rebuilt due to external event.');
@@ -91,35 +138,39 @@ function AppContent({ isConnected }: AppContentProps) {
         }
       });
 
-      ws.on('folder_discovered', (data: any) => {
-        console.log('[App] Folder discovered:', data.path);
-        addNotification(`Discovered folder: ${data.path.split(/[\\/]/).pop()}`, 'info');
+      ws.on('folder_discovered', (data: unknown) => {
+        const d = data as { path: string };
+        console.log('[App] Folder discovered:', d.path);
+        addNotification(`Discovered folder: ${d.path.split(/[\\/]/).pop()}`, 'info');
       });
 
-      ws.on('image_discovered', (_data: any) => {
+      ws.on('image_discovered', () => {
         // Silent for individual images to avoid spam, but could use for status bar
       });
 
-      ws.on('image_scored', (data: any) => {
-        console.log('[App] Image scored:', data.file_path);
+      ws.on('image_scored', (data: unknown) => {
+        const d = data as { file_path: string };
+        console.log('[App] Image scored:', d.file_path);
       });
 
-      ws.on('job_started', (data: any) => {
-        console.log('[App] Job started:', data);
-        const typeLabel = data.job_type === 'scoring' ? 'Scoring' :
-          data.job_type === 'tagging' ? 'Tagging' :
-            data.job_type === 'clustering' ? 'Clustering' : 'Process';
-        addNotification(`${typeLabel} job started (ID: ${data.job_id})`, 'info');
+      ws.on('job_started', (data: unknown) => {
+        const d = data as { job_type: string; job_id: string };
+        console.log('[App] Job started:', d);
+        const typeLabel = d.job_type === 'scoring' ? 'Scoring' :
+          d.job_type === 'tagging' ? 'Tagging' :
+            d.job_type === 'clustering' ? 'Clustering' : 'Process';
+        addNotification(`${typeLabel} job started (ID: ${d.job_id})`, 'info');
       });
 
-      ws.on('job_completed', (data: any) => {
-        console.log('[App] Job completed:', data);
-        const status = data.status === 'completed' ? 'finished successfully' : 'failed';
-        const type = data.status === 'completed' ? 'success' : 'error';
-        addNotification(`Job ${data.job_id} ${status}`, type);
+      ws.on('job_completed', (data: unknown) => {
+        const d = data as { status: string; job_id: string };
+        console.log('[App] Job completed:', d);
+        const status = d.status === 'completed' ? 'finished successfully' : 'failed';
+        const type = d.status === 'completed' ? 'success' : 'error';
+        addNotification(`Job ${d.job_id} ${status}`, type);
 
         // Refresh stacks if it was a clustering/selection job
-        if (data.status === 'completed' && window.electron) {
+        if (d.status === 'completed' && window.electron) {
           window.electron.rebuildStackCache().then(() => {
             console.log('[App] Stack cache rebuilt after job completion.');
           });
@@ -131,6 +182,7 @@ function AppContent({ isConnected }: AppContentProps) {
     return () => {
       if (ws) ws.disconnect();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -155,7 +207,7 @@ function AppContent({ isConnected }: AppContentProps) {
     return find(folders);
   }, [folders, selectedFolderId]);
 
-  const handleImageClick = (image: any) => {
+  const handleImageClick = (image: ImageRow) => {
     const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
     const index = imgList.findIndex(img => img.id === image.id);
     setCurrentImageIndex(index >= 0 ? index : 0);
@@ -182,7 +234,7 @@ function AppContent({ isConnected }: AppContentProps) {
     setOpeningImage(null);
   };
 
-  const handleSelectStack = (stack: any) => {
+  const handleSelectStack = (stack: ImageRow & { stack_id?: number | null; image_count?: number }) => {
     if (stack.stack_id !== null && stack.stack_id !== undefined) {
       setActiveStackId(stack.stack_id);
       setActiveStackInfo({ stackId: stack.stack_id, imageCount: stack.image_count || 0 });
@@ -256,10 +308,30 @@ function AppContent({ isConnected }: AppContentProps) {
                 &larr; Back to Stacks
               </button>
             )}
+
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            </div>
           </div>
         }
         sidebar={
           <div style={{ padding: 10, display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+            {currentView === 'duplicates' && (
+              <div style={{ marginBottom: 15 }}>
+                <button
+                  onClick={() => setCurrentView('gallery')}
+                  style={{
+                    width: '100%', padding: '10px',
+                    backgroundColor: '#4caf50',
+                    color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer',
+                    fontWeight: 'bold', borderLeft: '4px solid #fff'
+                  }}
+                >
+                  Back to Gallery
+                </button>
+              </div>
+            )}
+
             <h3 style={{ marginBottom: 10 }}>Folders</h3>
             <div style={{ marginBottom: 10, fontSize: '0.8em', color: '#888' }}>
               <p>DB Status:
@@ -382,55 +454,62 @@ function AppContent({ isConnected }: AppContentProps) {
         }
         content={
           <div style={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
-            {stackImagesLoading && (
-              <div style={{
-                position: 'absolute', top: 10, right: 10, zIndex: 10,
-                padding: '4px 12px', background: 'rgba(0, 0, 0, 0.7)',
-                color: 'white', borderRadius: 4, fontSize: '0.9em'
-              }}>
-                Loading...
-              </div>
-            )}
-            <GalleryGrid
-              images={currentImages}
-              onSelect={handleImageClick}
-              onEndReached={activeStackId ? undefined : loadMore}
-              onNavigateToParent={handleNavigateToParent}
-              viewerOpen={!!openingImage}
-              subfolders={folders.flatMap(f => {
-                const find = (nodes: Folder[]): Folder | undefined => {
-                  for (const node of nodes) {
-                    if (node.id === selectedFolderId) return node;
-                    if (node.children) {
-                      const found = find(node.children);
-                      if (found) return found;
-                    }
-                  }
-                };
-                return find([f])?.children || [];
-              })}
-              onSelectFolder={handleSelectFolder}
-              sortBy={filters.sortBy}
-              stacksMode={stacksMode}
-              stacks={stacks}
-              onSelectStack={handleSelectStack}
-              onStackEndReached={loadMoreStacks}
-              activeStackId={activeStackId}
-            />
-            {openingImage && (
-              <ImageViewer
-                image={openingImage}
-                onClose={closeViewer}
-                allImages={currentImages}
-                currentIndex={currentImageIndex}
-                onNavigate={handleNavigateImage}
-                onDelete={handleImageDelete}
-              />
+            {currentView === 'duplicates' ? (
+              <DuplicateFinder folders={folders} />
+            ) : (
+              <>
+                {stackImagesLoading && (
+                  <div style={{
+                    position: 'absolute', top: 10, right: 10, zIndex: 10,
+                    padding: '4px 12px', background: 'rgba(0, 0, 0, 0.7)',
+                    color: 'white', borderRadius: 4, fontSize: '0.9em'
+                  }}>
+                    Loading...
+                  </div>
+                )}
+                <GalleryGrid
+                  images={currentImages}
+                  onSelect={handleImageClick}
+                  onEndReached={activeStackId ? undefined : loadMore}
+                  onNavigateToParent={handleNavigateToParent}
+                  viewerOpen={!!openingImage}
+                  subfolders={folders.flatMap(f => {
+                    const find = (nodes: Folder[]): Folder | undefined => {
+                      for (const node of nodes) {
+                        if (node.id === selectedFolderId) return node;
+                        if (node.children) {
+                          const found = find(node.children);
+                          if (found) return found;
+                        }
+                      }
+                    };
+                    return find([f])?.children || [];
+                  })}
+                  onSelectFolder={handleSelectFolder}
+                  sortBy={filters.sortBy}
+                  stacksMode={stacksMode}
+                  stacks={stacks}
+                  onSelectStack={handleSelectStack}
+                  onStackEndReached={loadMoreStacks}
+                  activeStackId={activeStackId}
+                />
+                {openingImage && (
+                  <ImageViewer
+                    image={openingImage}
+                    onClose={closeViewer}
+                    allImages={currentImages}
+                    currentIndex={currentImageIndex}
+                    onNavigate={handleNavigateImage}
+                    onDelete={handleImageDelete}
+                  />
+                )}
+              </>
             )}
           </div>
         }
       />
       <NotificationTray />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </>
   );
 }

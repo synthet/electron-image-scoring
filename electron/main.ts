@@ -5,6 +5,9 @@ import os from 'os';
 import isDev from 'electron-is-dev';
 import * as db from './db';
 import { nefExtractor } from './nefExtractor';
+import { ExifTool } from 'exiftool-vendored';
+
+const exiftool = new ExifTool({ maxProcs: 2 });
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // if (require('electron-squirrel-startup')) {
@@ -35,14 +38,17 @@ function showSaveDialog(options: Electron.SaveDialogOptions) {
  * Returns { ok: true, data: T } on success, { ok: false, error: string } on error.
  */
 function wrapIpcHandler<T>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     handler: (...args: any[]) => Promise<T> | T
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): (...args: any[]) => Promise<{ ok: boolean; data?: T; error?: string }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return async (...args: any[]) => {
         try {
             const data = await handler(...args);
             return { ok: true, data };
-        } catch (error: any) {
-            const errorMessage = error?.message || String(error) || 'Unknown error';
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error) || 'Unknown error';
             console.error('[IPC] Handler error:', errorMessage, error);
             return { ok: false, error: errorMessage };
         }
@@ -83,17 +89,26 @@ const rebuildApplicationMenu = () => {
             label: 'File',
             submenu: [
                 {
+                    label: 'Settings',
+                    click: () => {
+                        if (mainWindow) {
+                            mainWindow.webContents.send('open-settings');
+                        }
+                    }
+                },
+                { type: 'separator' },
+                {
                     label: 'Export',
                     enabled: !!currentExportImageContext?.imageBytes?.length,
                     click: async () => {
                         try {
                             await exportCurrentImage();
-                        } catch (e: any) {
+                        } catch (e: unknown) {
                             console.error('[Main] Export image error:', e);
                             await showMessageBox({
                                 type: 'error',
                                 title: 'Export Failed',
-                                message: e?.message || 'Failed to export image.',
+                                message: e instanceof Error ? e.message : 'Failed to export image.',
                             });
                         }
                     }
@@ -102,9 +117,23 @@ const rebuildApplicationMenu = () => {
                 { role: 'quit' }
             ]
         },
+        {
+            label: 'Tools',
+            submenu: [
+                {
+                    label: 'Find Duplicates',
+                    click: () => {
+                        if (mainWindow) {
+                            mainWindow.webContents.send('open-duplicates');
+                        }
+                    }
+                }
+            ]
+        },
         { role: 'editMenu' },
         { role: 'viewMenu' },
         { role: 'windowMenu' },
+
     ]);
 
     Menu.setApplicationMenu(menu);
@@ -181,7 +210,7 @@ app.whenReady().then(async () => {
     // Handle media:// requests with path sanitization
     protocol.handle('media', (request) => {
         console.log('[Main] Media request:', request.url);
-        let url = request.url.replace('media://', '');
+        const url = request.url.replace('media://', '');
         let filePath = decodeURIComponent(url);
 
         // Convert WSL paths to Windows paths
@@ -248,6 +277,27 @@ app.whenReady().then(async () => {
         return await db.getKeywords();
     }));
 
+    ipcMain.handle('mcp-find-duplicates', wrapIpcHandler(async (_, options) => {
+        console.log(`[Main] Finding near duplicates via backend API`, options);
+        try {
+            const response = await net.fetch('http://127.0.0.1:7860/api/duplicates/find', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(options || {})
+            });
+            if (!response.ok) {
+                throw new Error(`API returned HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            return data;
+        } catch (e: unknown) {
+            console.error('[Main] Failed to fetch duplicates from backend:', e);
+            return { success: false, error: e instanceof Error ? e.message : String(e) };
+        }
+    }));
+
     ipcMain.handle('db:get-stacks', wrapIpcHandler(async (_, options) => {
         return await db.getStacks(options);
     }));
@@ -266,7 +316,7 @@ app.whenReady().then(async () => {
     }));
 
     ipcMain.handle('db:get-folders', wrapIpcHandler(async () => {
-        const rawFolders = await db.getFolders();
+        const rawFolders = await db.getFolders() as { path: string;[key: string]: unknown }[];
 
 
         const convertPathToLocal = (p: string) => {
@@ -285,9 +335,9 @@ app.whenReady().then(async () => {
             return p;
         };
 
-        const processed = rawFolders.map((f: any) => {
+        const processed = rawFolders.map((f: { path: string;[key: string]: unknown }) => {
             return { ...f, path: convertPathToLocal(f.path) };
-        }).filter((f: any) => {
+        }).filter((f: { path: string }) => {
             if (process.platform === 'win32') {
                 const isDrivePath = /^[a-zA-Z]:/.test(f.path);
                 if (!isDrivePath) return false;
@@ -342,14 +392,29 @@ app.whenReady().then(async () => {
                 fallback: true,
                 buffer: fileBuffer
             };
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error('[Main] NEF extraction error:', e);
             return {
                 success: false,
-                error: e.message
+                error: e instanceof Error ? e.message : String(e)
             };
         }
     });
+
+    ipcMain.handle('nef:read-exif', wrapIpcHandler(async (_, filePath: string) => {
+        try {
+            console.log(`[Main] EXIF read requested for: ${filePath}`);
+            let convertedPath = filePath;
+            if (process.platform === 'win32' && filePath.match(/^\/mnt\/[a-zA-Z]\//)) {
+                convertedPath = filePath.replace(/^\/mnt\/([a-zA-Z])\//, '$1:/');
+            }
+            // Add a timeout inside the IPC handler so it doesn't freeze the UI 
+            return await exiftool.read(convertedPath);
+        } catch (e: unknown) {
+            console.error('[Main] EXIF read error:', e);
+            throw e;
+        }
+    }));
 
     ipcMain.handle('export:set-current-image-context', async (_, context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => {
         currentExportImageContext = context;
@@ -437,6 +502,39 @@ app.whenReady().then(async () => {
         return 7860;
     });
 
+    ipcMain.handle('system:get-config', wrapIpcHandler(async () => {
+        return loadConfig();
+    }));
+
+    ipcMain.handle('system:save-config', wrapIpcHandler(async (_, updates) => {
+        const configPath = path.resolve(path.join(__dirname, '../config.json'));
+        let currentConfig: Record<string, unknown> = {};
+        try {
+            if (fs.existsSync(configPath)) {
+                currentConfig = JSON.parse(await fs.promises.readFile(configPath, 'utf8'));
+            }
+        } catch (e) {
+            console.error('[Main] Error reading config for save:', e);
+        }
+
+        // Deep merge updates
+        const newConfig = { ...currentConfig };
+        if (updates.selection) {
+            newConfig.selection = {
+                ...(newConfig.selection || {}),
+                ...updates.selection
+            };
+        }
+
+        try {
+            await fs.promises.writeFile(configPath, JSON.stringify(newConfig, null, 2));
+            return newConfig;
+        } catch (e) {
+            console.error('[Main] Error writing config:', e);
+            throw e;
+        }
+    }));
+
     console.log('[Main] All IPC handlers registered. Creating window...');
     createWindow();
     rebuildApplicationMenu();
@@ -452,6 +550,7 @@ app.on('window-all-closed', async () => {
 
     // Cleanup exiftool resources
     await nefExtractor.cleanup();
+    await exiftool.end();
 
     if (process.platform !== 'darwin') {
         app.quit();

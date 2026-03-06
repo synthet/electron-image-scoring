@@ -11,7 +11,7 @@ import LibRaw from 'libraw-wasm';
  */
 export class NefViewer {
     private static instance: NefViewer;
-    private libraw: any | null = null;
+    private libraw: LibRaw | null = null;
 
     private constructor() { }
 
@@ -311,7 +311,6 @@ export class NefViewer {
     public async decodeRaw(buffer: ArrayBuffer): Promise<ImageData | null> {
         try {
             if (!this.libraw) {
-                // @ts-ignore
                 this.libraw = new LibRaw();
             }
 

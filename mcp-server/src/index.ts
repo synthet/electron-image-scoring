@@ -99,7 +99,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             const content = await fs.readFile(logFile, 'utf-8');
             const lines = content.split('\n');
-            const numLines = (args as any)?.lines || 100;
+            const numLines = (args as Record<string, unknown>)?.lines as number || 100;
             const tailLines = lines.slice(-numLines).join('\n');
 
             return {
@@ -113,8 +113,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 return {
                     content: [{ type: "text", text: `Config file at ${CONFIG_PATH}:\n${config}` }],
                 };
-            } catch (err: any) {
-                if (err.code === 'ENOENT') {
+            } catch (err: unknown) {
+                if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
                     return {
                         content: [{ type: "text", text: `No config.json found at expected path: ${CONFIG_PATH}` }],
                     };
@@ -140,9 +140,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         throw new Error(`Unknown tool: ${name}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
         return {
-            content: [{ type: "text", text: `Error executing ${name}: ${error.message}` }],
+            content: [{ type: "text", text: `Error executing ${name}: ${error instanceof Error ? error.message : String(error)}` }],
             isError: true,
         };
     }

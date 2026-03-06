@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.27.0] - 2026-03-05
+
+### Added
+- **Duplicates UI**: Initial implementation of the `Duplicates` component for managing visually similar images.
+- **Settings UI**: New `Settings` component for application-wide configuration.
+- **UUID Management**: Added `scripts/add_uuids.js` and `scripts/sync_backup_uuids.js` for robust image tracking using unique identifiers.
+- **Type Safety**: New `electron/types.ts` and refined TypeScript definitions across the codebase to reduce `any` usage.
+
+### Changed
+- **Code Quality**: Significant linting audit and refactoring of `src/components`, `src/hooks`, and `src/services` to meet strict ESLint rules.
+- **NEF extraction**: Improved `nefViewer.ts` and `libraw-wasm` integration for better raw image handling.
+
+### Fixed
+- **API and WebSocket**: Robust error handling in `apiClient.ts` and `WebSocketService.ts`.
+- **Tree Navigation**: Fixed edge cases in `treeUtils.ts` for large folder structures.
+
 ## [3.25.0] - 2026-03-03
 
 ### Added

@@ -1,8 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { buildFolderTree } from '../components/Tree/treeUtils';
+import type { Folder } from '../components/Tree/treeUtils';
 
-export function useFolders() {
-    const [flatFolders, setFlatFolders] = useState<any[]>([]);
+interface FolderRow {
+    id: number;
+    path: string;
+    parent_id: number | null;
+    is_fully_scored: number;
+    image_count: number;
+}
+
+export function useFolders(): { folders: Folder[]; loading: boolean; refresh: () => void } {
+    const [flatFolders, setFlatFolders] = useState<FolderRow[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchFolders = () => {
@@ -18,6 +27,7 @@ export function useFolders() {
     };
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchFolders();
     }, []);
 

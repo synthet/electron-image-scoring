@@ -210,8 +210,13 @@ function AppContent({ isConnected }: AppContentProps) {
   }, [includeSubfolders, currentFolder]);
 
   const imageFilters = useMemo(() => subfolderIds ? { ...filters, folderIds: subfolderIds } : filters, [filters, subfolderIds]);
-  const { images, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, imageFilters);
-  const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount, refresh: refreshStacks } = useStacks(50, selectedFolderId, imageFilters);
+  const { images, loading: imagesLoading, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, imageFilters);
+  const { stacks, loading: stacksLoading, loadMore: loadMoreStacks, totalCount: stacksTotalCount, refresh: refreshStacks } = useStacks(50, selectedFolderId, imageFilters);
+
+  // Determine if grid is doing an initial load
+  const isInitialGridLoading = stacksMode && !activeStackId
+    ? (stacksLoading && stacks.length === 0)
+    : (activeStackId ? stackImagesLoading : (imagesLoading && images.length === 0));
 
   // Rebuild stack cache when stacks mode is first enabled
   useEffect(() => {
@@ -484,7 +489,15 @@ function AppContent({ isConnected }: AppContentProps) {
 
             <FilterPanel filters={filters} onChange={setFilters} />
 
-            <div style={{ flex: 1, overflow: 'hidden', borderTop: '1px solid #333', paddingTop: 10 }}>
+            <div style={{
+              flex: 1,
+              overflow: 'hidden',
+              borderTop: '1px solid #333',
+              paddingTop: 10,
+              pointerEvents: isInitialGridLoading ? 'none' : 'auto',
+              opacity: isInitialGridLoading ? 0.6 : 1,
+              transition: 'opacity 0.2s'
+            }}>
               {foldersLoading ? <div>Loading folders...</div> : (
                 <FolderTree folders={folders} onSelect={handleSelectFolder} selectedId={selectedFolderId} onRefresh={refreshFolders} />
               )}

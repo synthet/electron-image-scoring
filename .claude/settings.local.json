@@ -10,7 +10,11 @@
       "Bash(npx tsc --noEmit)",
       "mcp__filesystem__list_directory",
       "mcp__image-scoring__get_config",
-      "Bash(npx tsc --noEmit --pretty)"
+      "Bash(npx tsc --noEmit --pretty)",
+      "mcp__filesystem__read_text_file",
+      "mcp__filesystem__directory_tree",
+      "Bash(xargs grep -l \"PipelineBridge\\\\|INTEGRATION_QUEUE\\\\|CommandDispatcher\")",
+      "mcp__filesystem__list_allowed_directories"
     ]
   }
 }

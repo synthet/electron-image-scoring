@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.29.1] - 2026-03-07
+
+### Added
+- **Recursive Folder Scan**: Added a "Subfolders" toggle to the gallery header, allowing users to include images from all nested subdirectories in the current view.
+- **Support Scripts**: Added `scripts/extract_preview.js` and `scripts/remove_duplicates.js` for enhanced metadata extraction and duplicate image management.
+
+### Fixed
+- **Tree View Blocking**: Implemented interaction blocking for the folder tree during initial image grid loading to prevent race conditions and improve UI stability.
+
+
 ## [3.29.0] - 2026-03-07
 
 ### Added

@@ -41,7 +41,7 @@ function AppContent({ isConnected }: AppContentProps) {
   const addNotification = useNotificationStore(state => state.addNotification);
 
   const { folders, loading: foldersLoading, refresh: refreshFolders } = useFolders();
-  const { keywords, loading: keywordsLoading } = useKeywords();
+  const { keywords, loading: keywordsLoading, fetch: fetchKeywords } = useKeywords();
 
   const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({ minRating: 0, sortBy: 'score_general', order: 'DESC' });
@@ -72,30 +72,17 @@ function AppContent({ isConnected }: AppContentProps) {
     };
   }, []);
 
+  // Subfolders toggle
+  const [includeSubfolders, setIncludeSubfolders] = useState(false);
+
   // Stacks mode state
   const [stacksMode, setStacksMode] = useState(false);
   const [activeStackId, setActiveStackId] = useState<number | null>(null);
   const [activeStackInfo, setActiveStackInfo] = useState<{ stackId: number; imageCount: number } | null>(null);
   const [cacheBuilt, setCacheBuilt] = useState(false);
 
-  const { images, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, filters);
-  const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount, refresh: refreshStacks } = useStacks(50, selectedFolderId, filters);
-
   const [stackImages, setStackImages] = useState<ImageRow[]>([]);
   const [stackImagesLoading, setStackImagesLoading] = useState(false);
-
-  // Rebuild stack cache when stacks mode is first enabled
-  useEffect(() => {
-    if (stacksMode && !cacheBuilt && window.electron) {
-      window.electron.rebuildStackCache().then((result) => {
-        console.log('[App] Stack cache rebuild result:', result);
-        setCacheBuilt(true);
-        refreshStacks();
-      }).catch(err => {
-        console.error('[App] Failed to rebuild stack cache:', err);
-      });
-    }
-  }, [stacksMode, cacheBuilt, refreshStacks]);
 
   // Load images when activeStackId changes or filters change while inside a stack
   const loadStackImages = useCallback(async (stackId: number) => {
@@ -188,6 +175,7 @@ function AppContent({ isConnected }: AppContentProps) {
 
   const handleSelectFolder = (folder: Folder) => {
     setSelectedFolderId(folder.id);
+    setIncludeSubfolders(false);
     setActiveStackId(null);
     setActiveStackInfo(null);
     setStackImages([]);
@@ -206,6 +194,37 @@ function AppContent({ isConnected }: AppContentProps) {
     };
     return find(folders);
   }, [folders, selectedFolderId]);
+
+  const subfolderIds = useMemo(() => {
+    if (!includeSubfolders || !currentFolder?.children?.length) return undefined;
+    const collectIds = (folder: Folder): number[] => {
+      const ids = [folder.id];
+      if (folder.children) {
+        for (const child of folder.children) {
+          ids.push(...collectIds(child));
+        }
+      }
+      return ids;
+    };
+    return collectIds(currentFolder);
+  }, [includeSubfolders, currentFolder]);
+
+  const imageFilters = useMemo(() => subfolderIds ? { ...filters, folderIds: subfolderIds } : filters, [filters, subfolderIds]);
+  const { images, loadMore, totalCount, removeImage } = useImages(50, selectedFolderId, imageFilters);
+  const { stacks, loadMore: loadMoreStacks, totalCount: stacksTotalCount, refresh: refreshStacks } = useStacks(50, selectedFolderId, imageFilters);
+
+  // Rebuild stack cache when stacks mode is first enabled
+  useEffect(() => {
+    if (stacksMode && !cacheBuilt && window.electron) {
+      window.electron.rebuildStackCache().then((result) => {
+        console.log('[App] Stack cache rebuild result:', result);
+        setCacheBuilt(true);
+        refreshStacks();
+      }).catch(err => {
+        console.error('[App] Failed to rebuild stack cache:', err);
+      });
+    }
+  }, [stacksMode, cacheBuilt, refreshStacks]);
 
   const handleImageClick = (image: ImageRow) => {
     const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
@@ -309,7 +328,26 @@ function AppContent({ isConnected }: AppContentProps) {
               </button>
             )}
 
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+              {currentFolder && currentFolder.children && currentFolder.children.length > 0 && (
+                <button
+                  onClick={() => setIncludeSubfolders(prev => !prev)}
+                  title={includeSubfolders ? 'Showing all subfolders' : 'Show images from subfolders'}
+                  style={{
+                    background: includeSubfolders ? '#007acc' : '#444',
+                    color: includeSubfolders ? '#fff' : '#999',
+                    border: 'none',
+                    padding: '3px 10px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Subfolders
+                </button>
+              )}
             </div>
           </div>
         }
@@ -383,6 +421,7 @@ function AppContent({ isConnected }: AppContentProps) {
               <select
                 value={filters.keyword || ''}
                 onChange={(e) => setFilters({ ...filters, keyword: e.target.value || undefined })}
+                onFocus={fetchKeywords}
                 style={{
                   background: '#333',
                   color: '#eee',

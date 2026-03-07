@@ -325,15 +325,26 @@ export async function runTransaction<T>(
     }
 }
 
+function pushFolderFilter(
+    whereParts: string[], params: (string | number | null)[],
+    folderId: number | undefined, folderIds: number[] | undefined,
+    col: string = 'folder_id'
+) {
+    if (folderIds && folderIds.length > 0) {
+        whereParts.push(`${col} IN (${folderIds.map(() => '?').join(', ')})`);
+        params.push(...folderIds);
+    } else if (folderId) {
+        whereParts.push(`${col} = ?`);
+        params.push(folderId);
+    }
+}
+
 export async function getImageCount(options: ImageQueryOptions = {}): Promise<number> {
-    const { folderId, minRating, colorLabel, keyword } = options;
+    const { folderId, folderIds, minRating, colorLabel, keyword } = options;
     const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
-    if (folderId) {
-        whereParts.push('folder_id = ?');
-        params.push(folderId);
-    }
+    pushFolderFilter(whereParts, params, folderId, folderIds);
 
     if (minRating !== undefined && minRating > 0) {
         whereParts.push('rating >= ?');
@@ -360,6 +371,7 @@ export interface ImageQueryOptions {
     limit?: number;
     offset?: number;
     folderId?: number;
+    folderIds?: number[];
     minRating?: number;
     colorLabel?: string;
     keyword?: string;
@@ -368,14 +380,11 @@ export interface ImageQueryOptions {
 }
 
 export async function getImages(options: ImageQueryOptions = {}): Promise<unknown[]> {
-    const { limit = 50, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
+    const { limit = 50, offset = 0, folderId, folderIds, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
     const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
-    if (folderId) {
-        whereParts.push('folder_id = ?');
-        params.push(folderId);
-    }
+    pushFolderFilter(whereParts, params, folderId, folderIds);
 
     if (minRating !== undefined && minRating > 0) {
         whereParts.push('rating >= ?');
@@ -436,21 +445,34 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<unknow
     return query(sql, params);
 }
 
+// Cache for getKeywords to avoid re-fetching 45k+ rows repeatedly
+let keywordsCache: { result: string[]; timestamp: number } | null = null;
+const KEYWORDS_CACHE_TTL = 60_000; // 1 minute
+
+export function invalidateKeywordsCache() {
+    keywordsCache = null;
+}
+
 export async function getKeywords(): Promise<string[]> {
-    // CAST to VARCHAR is safer for Node drivers than BLOBs for string data
-    // Use 8191 as safe max for UTF8 in Firebird
-    let sql = `SELECT CAST(keywords AS VARCHAR(8191)) as keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
+    // Return cached result if fresh
+    if (keywordsCache && (Date.now() - keywordsCache.timestamp) < KEYWORDS_CACHE_TTL) {
+        console.log(`[DB] getKeywords returning cached result (${keywordsCache.result.length} keywords)`);
+        return keywordsCache.result;
+    }
+
+    // DISTINCT reduces rows sent over the wire when many images share keyword combos
+    let sql = `SELECT DISTINCT CAST(keywords AS VARCHAR(8191)) as keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
 
     console.log('[DB] Executing getKeywords SQL:', sql);
 
     try {
         let rows = await query<{ keywords: string | Buffer; KEYWORDS?: string | Buffer; KEYWORDS_1?: string | Buffer }>(sql);
-        console.log(`[DB] getKeywords returned ${rows.length} rows`);
+        console.log(`[DB] getKeywords returned ${rows.length} distinct rows`);
 
         // Fallback if CAST returns nothing but plain query might work (unlikely but safe)
         if (rows.length === 0) {
             console.log('[DB] CAST query returned 0 rows. Retrying with raw BLOB query...');
-            sql = `SELECT keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
+            sql = `SELECT DISTINCT keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
             rows = await query<{ keywords: string | Buffer; KEYWORDS?: string | Buffer; KEYWORDS_1?: string | Buffer }>(sql);
             console.log(`[DB] Fallback query returned ${rows.length} rows`);
         }
@@ -458,8 +480,6 @@ export async function getKeywords(): Promise<string[]> {
         const uniqueKeywords = new Set<string>();
 
         for (const row of rows) {
-            // Check keys case-insensitively
-            // If explicit alias is used (AS keywords), usually it respects that.
             const val = row.keywords || row.KEYWORDS || row.KEYWORDS_1;
 
             let kwStr = '';
@@ -472,7 +492,6 @@ export async function getKeywords(): Promise<string[]> {
             }
 
             if (kwStr) {
-                // Assume comma separated
                 const parts = kwStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
                 parts.forEach(p => uniqueKeywords.add(p));
             }
@@ -480,10 +499,11 @@ export async function getKeywords(): Promise<string[]> {
 
         const result = Array.from(uniqueKeywords).sort();
         console.log(`[DB] Found ${result.length} unique keywords`);
+
+        keywordsCache = { result, timestamp: Date.now() };
         return result;
     } catch (e) {
         console.error('[DB] getKeywords failed:', e);
-        // Fallback: Return empty array
         return [];
     }
 }
@@ -826,7 +846,7 @@ export async function rebuildStackCache(): Promise<number> {
 }
 
 export async function getStacks(options: StackQueryOptions = {}): Promise<unknown[]> {
-    const { limit = 50, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
+    const { limit = 50, offset = 0, folderId, folderIds, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
 
     await ensureStackCacheTable();
 
@@ -861,13 +881,8 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<unknow
     const wherePartsCache: string[] = [];
     const wherePartsNonStack: string[] = ['i.stack_id IS NULL'];
 
-    if (folderId) {
-        wherePartsCache.push('sc.folder_id = ?');
-        topParams.push(folderId);
-
-        wherePartsNonStack.push('i.folder_id = ?');
-        botParams.push(folderId);
-    }
+    pushFolderFilter(wherePartsCache, topParams, folderId, folderIds, 'sc.folder_id');
+    pushFolderFilter(wherePartsNonStack, botParams, folderId, folderIds, 'i.folder_id');
 
     if (minRating !== undefined && minRating > 0) {
         wherePartsCache.push('sc.max_rating >= ?');
@@ -1023,14 +1038,11 @@ export async function getImagesByStack(stackId: number | null, options: ImageQue
 }
 
 export async function getStackCount(options: StackQueryOptions = {}): Promise<number> {
-    const { folderId, minRating, colorLabel, keyword } = options;
+    const { folderId, folderIds, minRating, colorLabel, keyword } = options;
     const params: (string | number | null)[] = [];
     const whereParts: string[] = [];
 
-    if (folderId) {
-        whereParts.push('i.folder_id = ?');
-        params.push(folderId);
-    }
+    pushFolderFilter(whereParts, params, folderId, folderIds, 'i.folder_id');
 
     if (minRating !== undefined && minRating > 0) {
         whereParts.push('i.rating >= ?');

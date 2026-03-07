@@ -7,6 +7,7 @@ interface ImageQueryOptions {
     limit?: number;
     offset?: number;
     folderId?: number;
+    folderIds?: number[];
     minRating?: number;
     colorLabel?: string;
     keyword?: string;
@@ -132,17 +133,20 @@ export function useImageCount() {
 
 export function useKeywords() {
     const [keywords, setKeywords] = useState<string[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const fetched = useRef(false);
 
-    useEffect(() => {
-        if (!window.electron) return;
+    const fetch = useCallback(() => {
+        if (fetched.current || !window.electron) return;
+        fetched.current = true;
+        setLoading(true);
         window.electron.getKeywords().then(res => {
             if (Array.isArray(res)) setKeywords(res);
             setLoading(false);
         });
     }, []);
 
-    return { keywords, loading };
+    return { keywords, loading, fetch };
 }
 
 /**

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.29.0] - 2026-03-07
+
+### Added
+- **Manual Keyword Fetching**: Added a `fetch` function to the `useKeywords` hook to allow manual triggering of keyword data retrieval.
+
+### Changed
+- **Settings UI**: Renamed "Configurations" tab to "Settings" for better clarity and consistency across the application.
+- **UI Refinement**: Cleaned up `AppContent.tsx` by removing obsolete tab modules and streamlining component registration.
+- **Type Safety**: Improved TypeScript definitions for IPC handlers and database types to ensure more robust inter-process communication.
+
 ## [3.28.0] - 2026-03-05
 
 ### Added

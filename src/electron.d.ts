@@ -4,6 +4,7 @@ interface ImageQueryOptions {
     limit?: number;
     offset?: number;
     folderId?: number;
+    folderIds?: number[];
     minRating?: number;
     colorLabel?: string;
     keyword?: string;

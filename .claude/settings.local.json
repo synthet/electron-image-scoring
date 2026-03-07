@@ -9,7 +9,8 @@
       "mcp__mcp-firebird__execute-query",
       "Bash(npx tsc --noEmit)",
       "mcp__filesystem__list_directory",
-      "mcp__image-scoring__get_config"
+      "mcp__image-scoring__get_config",
+      "Bash(npx tsc --noEmit --pretty)"
     ]
   }
 }

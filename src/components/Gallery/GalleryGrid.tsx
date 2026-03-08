@@ -288,7 +288,7 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
 
 
 
-    if (displayData.length === 0 && subfolders && subfolders.length > 0) {
+    if (displayData.length === 0 && subfolders && subfolders.length > 0 && !activeStackId) {
         return (
             <div style={{ padding: 20, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                 {subfolders.map(folder => (

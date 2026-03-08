@@ -15,7 +15,8 @@ body {
   background-color: var(--bg-dark);
   color: var(--text-primary);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  overflow: hidden; /* App handles scrolling */
+  overflow: hidden;
+  /* App handles scrolling */
 }
 
 .app-container {
@@ -47,7 +48,30 @@ body {
   display: flex;
   align-items: center;
   padding: 0 10px;
-  -webkit-app-region: drag; /* Drag window */
+  -webkit-app-region: drag;
+  /* Drag window */
+}
+
+.breadcrumbs-bar {
+  padding: 8px 14px;
+  background-color: var(--bg-dark);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.breadcrumbs-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.breadcrumbs-bar::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 4px;
 }
 
 .content-area {

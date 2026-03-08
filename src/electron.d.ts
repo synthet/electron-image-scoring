@@ -138,6 +138,9 @@ declare global {
             readExif: (filePath: string) => Promise<any>;
             onOpenSettings: (callback: () => void) => () => void;
             onOpenDuplicates: (callback: () => void) => () => void;
+            onImportFolderSelected: (callback: (folderPath: string) => void) => () => void;
+            importRun: (folderPath: string) => Promise<{ added: number; skipped: number; errors: string[] }>;
+            onImportProgress: (callback: (data: { current: number; total: number; path?: string }) => void) => () => void;
         };
     };
 }

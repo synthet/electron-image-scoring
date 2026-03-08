@@ -666,6 +666,120 @@ export async function deleteFolder(id: number): Promise<boolean> {
     }
 }
 
+/**
+ * Normalize a file system path for consistent storage in the database.
+ * Uses forward slashes; on Windows converts to D:/ style.
+ */
+function normalizePathForDb(filePath: string): string {
+    const resolved = path.resolve(filePath);
+    if (process.platform === 'win32') {
+        return resolved.replace(/\\/g, '/');
+    }
+    return resolved;
+}
+
+/**
+ * Get or create a folder by path. Creates parent folders recursively if needed.
+ */
+export async function getOrCreateFolder(folderPath: string): Promise<number> {
+    const normalized = normalizePathForDb(folderPath);
+    const existing = await query<{ id: number }>('SELECT id FROM folders WHERE path = ?', [normalized]);
+    if (existing.length > 0) {
+        return existing[0].id;
+    }
+
+    const parentPath = path.dirname(folderPath);
+    const normalizedParent = normalizePathForDb(parentPath);
+    let parentId: number | null = null;
+
+    if (normalizedParent && normalizedParent !== normalized) {
+        const isRoot = normalizedParent === path.dirname(normalizedParent) || normalizedParent.length <= 3;
+        if (!isRoot) {
+            parentId = await getOrCreateFolder(parentPath);
+        }
+    }
+
+    try {
+        const insertResult = await query<{ id: number }>(
+            'INSERT INTO folders (path, parent_id, is_fully_scored, created_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP) RETURNING id',
+            [normalized, parentId]
+        );
+        if (insertResult.length > 0) {
+            return insertResult[0].id;
+        }
+    } catch (e) {
+        const errStr = String(e);
+        if (errStr.includes('RETURNING') || errStr.includes('syntax')) {
+            await query('INSERT INTO folders (path, parent_id, is_fully_scored, created_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP)', [normalized, parentId]);
+            const rows = await query<{ id: number }>('SELECT id FROM folders WHERE path = ?', [normalized]);
+            if (rows.length > 0) return rows[0].id;
+        }
+        throw e;
+    }
+
+    const rows = await query<{ id: number }>('SELECT id FROM folders WHERE path = ?', [normalized]);
+    if (rows.length > 0) return rows[0].id;
+    throw new Error(`Failed to get folder id for path: ${normalized}`);
+}
+
+/**
+ * Check if an image with the given file path already exists.
+ */
+export async function findImageByFilePath(filePath: string): Promise<number | null> {
+    const normalized = normalizePathForDb(filePath);
+    const rows = await query<{ id: number }>('SELECT id FROM images WHERE file_path = ?', [normalized]);
+    return rows.length > 0 ? rows[0].id : null;
+}
+
+/**
+ * Check if an image with the given IMAGE_UUID already exists.
+ */
+export async function findImageByUuid(uuid: string): Promise<number | null> {
+    const rows = await query<{ id: number }>('SELECT id FROM images WHERE image_uuid = ?', [uuid]);
+    return rows.length > 0 ? rows[0].id : null;
+}
+
+export interface InsertImageRow {
+    file_path: string;
+    file_name: string;
+    file_type: string;
+    folder_id: number;
+    image_uuid?: string | null;
+}
+
+/**
+ * Insert a new image record. Returns the new image id.
+ */
+export async function insertImage(row: InsertImageRow): Promise<number> {
+    const normalizedPath = normalizePathForDb(row.file_path);
+    const uuid = row.image_uuid ?? null;
+
+    try {
+        const insertResult = await query<{ id: number }>(
+            'INSERT INTO images (file_path, file_name, file_type, folder_id, image_uuid, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id',
+            [normalizedPath, row.file_name, row.file_type, row.folder_id, uuid]
+        );
+        if (insertResult.length > 0) {
+            return insertResult[0].id;
+        }
+    } catch (e) {
+        const errStr = String(e);
+        if (errStr.includes('RETURNING') || errStr.includes('syntax')) {
+            await query(
+                'INSERT INTO images (file_path, file_name, file_type, folder_id, image_uuid, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                [normalizedPath, row.file_name, row.file_type, row.folder_id, uuid]
+            );
+            const rows = await query<{ id: number }>('SELECT id FROM images WHERE file_path = ? ORDER BY id DESC', [normalizedPath]);
+            if (rows.length > 0) return rows[0].id;
+        }
+        throw e;
+    }
+
+    const rows = await query<{ id: number }>('SELECT id FROM images WHERE file_path = ? ORDER BY id DESC', [normalizedPath]);
+    if (rows.length > 0) return rows[0].id;
+    throw new Error(`Failed to get image id after insert: ${normalizedPath}`);
+}
+
 export async function updateImageDetails(id: number, updates: Record<string, string | number | null>): Promise<boolean> {
     const allowedFields = ['title', 'description', 'rating', 'label', 'keywords'];
     const setParts: string[] = [];
@@ -979,7 +1093,7 @@ export async function getImagesByStack(stackId: number | null, options: ImageQue
         params.push(stackId);
     }
 
-    if (folderId) {
+    if (folderId && (stackId === null || stackId === undefined)) {
         whereParts.push('i.folder_id = ?');
         params.push(folderId);
     }

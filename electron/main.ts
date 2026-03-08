@@ -96,6 +96,19 @@ const rebuildApplicationMenu = () => {
                         }
                     }
                 },
+                {
+                    label: 'Import',
+                    click: async () => {
+                        const win = getDialogWindow();
+                        const result = await dialog.showOpenDialog(win || mainWindow!, {
+                            properties: ['openDirectory'],
+                            title: 'Select folder to import'
+                        });
+                        if (!result.canceled && result.filePaths[0]) {
+                            mainWindow?.webContents.send('import:folder-selected', result.filePaths[0]);
+                        }
+                    }
+                },
                 { type: 'separator' },
                 {
                     label: 'Export',
@@ -383,6 +396,79 @@ app.whenReady().then(async () => {
     ipcMain.handle('db:delete-folder', wrapIpcHandler(async (_, id) => {
         console.log(`[Main] Deleting folder ID: ${id}`);
         return await db.deleteFolder(id);
+    }));
+
+    const IMAGE_EXTENSIONS = new Set([
+        '.jpg', '.jpeg', '.png', '.nef', '.arw', '.cr2', '.dng', '.heic', '.webp', '.tiff', '.tif', '.raw', '.orf', '.rw2'
+    ]);
+
+    ipcMain.handle('import:run', wrapIpcHandler(async (_, folderPath: string) => {
+        if (!folderPath || typeof folderPath !== 'string') {
+            throw new Error('Folder path is required');
+        }
+        const stat = await fs.promises.stat(folderPath).catch(() => null);
+        if (!stat || !stat.isDirectory()) {
+            throw new Error(`Path is not a directory: ${folderPath}`);
+        }
+
+        const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+        const files = entries
+            .filter(e => e.isFile())
+            .map(e => path.join(folderPath, e.name))
+            .filter(p => IMAGE_EXTENSIONS.has(path.extname(p).toLowerCase()));
+
+        const total = files.length;
+        let added = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        const folderId = await db.getOrCreateFolder(folderPath);
+
+        for (let i = 0; i < files.length; i++) {
+            const filePath = files[i];
+            const fileName = path.basename(filePath);
+            const fileType = path.extname(filePath).toLowerCase().replace(/^\./, '') || 'unknown';
+
+            mainWindow?.webContents.send('import:progress', { current: i + 1, total, path: filePath });
+
+            try {
+                const existsByPath = await db.findImageByFilePath(filePath);
+                if (existsByPath) {
+                    skipped++;
+                    continue;
+                }
+
+                let imageUuid: string | null = null;
+                try {
+                    const tags = await exiftool.read(filePath);
+                    const uid = tags.ImageUniqueID ?? tags.DocumentID ?? null;
+                    if (uid && typeof uid === 'string') {
+                        imageUuid = uid;
+                        const existsByUuid = await db.findImageByUuid(imageUuid);
+                        if (existsByUuid) {
+                            skipped++;
+                            continue;
+                        }
+                    }
+                } catch {
+                    // No EXIF or read failed; proceed without UUID
+                }
+
+                await db.insertImage({
+                    file_path: filePath,
+                    file_name: fileName,
+                    file_type: fileType,
+                    folder_id: folderId,
+                    image_uuid: imageUuid
+                });
+                added++;
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                errors.push(`${fileName}: ${msg}`);
+            }
+        }
+
+        return { added, skipped, errors };
     }));
 
     ipcMain.handle('nef:extract-preview', async (_, filePath: string) => {

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.30.0] - 2026-03-07
+
+### Added
+- **Image Import Capability**: Added a "Import folder" option to the File menu, allowing users to scan local directories and add images to the database.
+- **Import Progress UI**: New `ImportModal` component with real-time feedback, showing file counts, current progress, and detailed error reporting.
+- **Deduplication on Import**: Automatic extraction of unique image identifiers (UUIDs) from EXIF metadata during import to prevent duplicate entries.
+- **Enhanced Database API**: Added robust folder creation and image insertion methods to the database service with path normalization.
+
+### Changed
+- **Application Menu**: Reorganized the main menu to include an "Import" option under File and moved "Find Duplicates" to a new "Tools" menu.
+
+### Fixed
+- **Path Consistency**: Improved handling of WSL-to-Windows path conversions and normalization for stored file paths.
+
 ## [3.29.1] - 2026-03-07
 
 ### Added
@@ -10,6 +24,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Tree View Blocking**: Implemented interaction blocking for the folder tree during initial image grid loading to prevent race conditions and improve UI stability.
+- **Stacks and Subfolders Interaction**: Fixed an issue where clicking a stack would display subfolders instead of the stack images when the "Subfolders" mode was active.
+- **Image List Loading Spinner**: Implemented a centered loading spinner and screen dimming overlay for initial grid load states, and a subtle corner badge for subsequent loads or pagination.
+
 
 
 ## [3.29.0] - 2026-03-07
@@ -18,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - **Manual Keyword Fetching**: Added a `fetch` function to the `useKeywords` hook to allow manual triggering of keyword data retrieval.
 
 ### Changed
+- **UI Layout**: Moved the "Subfolders" toggle from the main gallery header into the left sidebar, styling it as a consistent "ON/OFF" switch alongside the "Stacks" control.
 - **Settings UI**: Renamed "Configurations" tab to "Settings" for better clarity and consistency across the application.
 - **UI Refinement**: Cleaned up `AppContent.tsx` by removing obsolete tab modules and streamlining component registration.
 - **Type Safety**: Improved TypeScript definitions for IPC handlers and database types to ensure more robust inter-process communication.

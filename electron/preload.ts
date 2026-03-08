@@ -118,4 +118,22 @@ contextBridge.exposeInMainWorld('electron', {
             ipcRenderer.removeListener('open-duplicates', handler);
         };
     },
+    onImportFolderSelected: (callback: (folderPath: string) => void) => {
+        const handler = (_: unknown, folderPath: string) => callback(folderPath);
+        ipcRenderer.on('import:folder-selected', handler);
+        return () => {
+            ipcRenderer.removeListener('import:folder-selected', handler);
+        };
+    },
+    importRun: async (folderPath: string) => {
+        const response = await ipcRenderer.invoke('import:run', folderPath);
+        return unwrapEnvelope<{ added: number; skipped: number; errors: string[] }>(response);
+    },
+    onImportProgress: (callback: (data: { current: number; total: number; path?: string }) => void) => {
+        const handler = (_: unknown, data: { current: number; total: number; path?: string }) => callback(data);
+        ipcRenderer.on('import:progress', handler);
+        return () => {
+            ipcRenderer.removeListener('import:progress', handler);
+        };
+    },
 });

@@ -12,6 +12,8 @@ import { useNotificationStore } from './store/useNotificationStore';
 import { NotificationTray } from './components/Layout/NotificationTray';
 import { SettingsModal } from './components/Settings/SettingsModal';
 import { DuplicateFinder } from './components/Duplicates/DuplicateFinder';
+import { ImportModal } from './components/Import/ImportModal';
+import { Loader2, ChevronRight } from 'lucide-react';
 
 interface ImageRow {
   id: number;
@@ -50,6 +52,9 @@ function AppContent({ isConnected }: AppContentProps) {
   const [currentView, setCurrentView] = useState<'gallery' | 'duplicates'>('gallery');
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFolderPath, setImportFolderPath] = useState('');
+
   useEffect(() => {
     // Register settings menu listener
     let cleanupSettings: (() => void) | undefined;
@@ -66,9 +71,18 @@ function AppContent({ isConnected }: AppContentProps) {
       });
     }
 
+    let cleanupImport: (() => void) | undefined;
+    if (window.electron?.onImportFolderSelected) {
+      cleanupImport = window.electron.onImportFolderSelected((path) => {
+        setImportFolderPath(path);
+        setIsImportModalOpen(true);
+      });
+    }
+
     return () => {
       if (cleanupSettings) cleanupSettings();
       if (cleanupDuplicates) cleanupDuplicates();
+      if (cleanupImport) cleanupImport();
     };
   }, []);
 
@@ -309,10 +323,92 @@ function AppContent({ isConnected }: AppContentProps) {
     return currentFolder ? (currentFolder.title || 'Folder') : 'Image Gallery';
   })();
 
+  const breadcrumbsNode = useMemo(() => {
+    if (currentView === 'duplicates') return null;
+
+    type BreadcrumbPart = {
+      label: string;
+      onClick: () => void;
+      isActive: boolean;
+    };
+
+    const parts: BreadcrumbPart[] = [];
+
+    if (selectedFolderId) {
+      const findFolderChain = (nodes: Folder[], targetId: number, chain: Folder[]): Folder[] | null => {
+        for (const node of nodes) {
+          if (node.id === targetId) return [...chain, node];
+          if (node.children) {
+            const found = findFolderChain(node.children, targetId, [...chain, node]);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const chain = findFolderChain(folders, selectedFolderId, []) || [];
+
+      chain.forEach((folder, idx) => {
+        const isLast = idx === chain.length - 1 && !activeStackId;
+        parts.push({
+          label: folder.title || 'Folder',
+          onClick: () => {
+            setSelectedFolderId(folder.id);
+            setIncludeSubfolders(false);
+            setActiveStackId(null);
+            setActiveStackInfo(null);
+            setStackImages([]);
+          },
+          isActive: isLast
+        });
+      });
+    }
+
+    if (activeStackId) {
+      parts.push({
+        label: `Stack #${activeStackId}`,
+        onClick: () => { },
+        isActive: true
+      });
+    }
+
+    if (parts.length === 0) return null;
+
+    return (
+      <>
+        {parts.map((part, index) => (
+          <span key={index} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span
+              onClick={part.isActive ? undefined : part.onClick}
+              title={part.isActive ? undefined : 'Go to folder'}
+              style={{
+                color: part.isActive ? '#e0e0e0' : '#4dabf5',
+                fontWeight: part.isActive ? 500 : 'normal',
+                cursor: part.isActive ? 'default' : 'pointer',
+                transition: 'color 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (!part.isActive) e.currentTarget.style.textDecoration = 'underline';
+              }}
+              onMouseLeave={(e) => {
+                if (!part.isActive) e.currentTarget.style.textDecoration = 'none';
+              }}
+            >
+              {part.label}
+            </span>
+            {index < parts.length - 1 && (
+              <ChevronRight size={14} color="#666" />
+            )}
+          </span>
+        ))}
+      </>
+    );
+  }, [folders, selectedFolderId, activeStackId, currentView]);
+
   return (
     <>
       <MainLayout
-
+        breadcrumbs={breadcrumbsNode}
         header={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: '1.2em' }}>
@@ -321,38 +417,9 @@ function AppContent({ isConnected }: AppContentProps) {
             <span style={{ fontSize: '0.9em', color: '#888' }}>
               ({currentTotal} {stacksMode && !activeStackId ? 'stacks' : 'items'})
             </span>
-            {activeStackId && (
-              <button
-                onClick={() => { setActiveStackId(null); setActiveStackInfo(null); setStackImages([]); }}
-                style={{
-                  background: 'none', border: '1px solid #555', color: '#ccc',
-                  padding: '2px 10px', borderRadius: 4, cursor: 'pointer', fontSize: '0.85em'
-                }}
-              >
-                &larr; Back to Stacks
-              </button>
-            )}
 
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-              {currentFolder && currentFolder.children && currentFolder.children.length > 0 && (
-                <button
-                  onClick={() => setIncludeSubfolders(prev => !prev)}
-                  title={includeSubfolders ? 'Showing all subfolders' : 'Show images from subfolders'}
-                  style={{
-                    background: includeSubfolders ? '#007acc' : '#444',
-                    color: includeSubfolders ? '#fff' : '#999',
-                    border: 'none',
-                    padding: '3px 10px',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  Subfolders
-                </button>
-              )}
+              {/* Header actions can go here */}
             </div>
           </div>
         }
@@ -422,6 +489,38 @@ function AppContent({ isConnected }: AppContentProps) {
                   }}>ON</span>
                 </button>
               </div>
+
+              {/* Subfolders Toggle */}
+              {currentFolder && currentFolder.children && currentFolder.children.length > 0 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '6px', background: '#333', borderRadius: 4, border: '1px solid #555'
+                }}>
+                  <span style={{ fontSize: '12px', color: '#ccc' }}>Show Subfolders</span>
+                  <button
+                    onClick={() => setIncludeSubfolders(!includeSubfolders)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 0,
+                      background: 'none', border: '1px solid #666', borderRadius: 12,
+                      padding: 0, cursor: 'pointer', overflow: 'hidden'
+                    }}
+                    title={includeSubfolders ? 'Showing all subfolders' : 'Show images from subfolders'}
+                  >
+                    <span style={{
+                      padding: '3px 10px', fontSize: '11px', fontWeight: 600,
+                      background: !includeSubfolders ? '#007acc' : '#444',
+                      color: !includeSubfolders ? '#fff' : '#999',
+                      transition: 'all 0.15s ease'
+                    }}>OFF</span>
+                    <span style={{
+                      padding: '3px 10px', fontSize: '11px', fontWeight: 600,
+                      background: includeSubfolders ? '#007acc' : '#444',
+                      color: includeSubfolders ? '#fff' : '#999',
+                      transition: 'all 0.15s ease'
+                    }}>ON</span>
+                  </button>
+                </div>
+              )}
 
               <select
                 value={filters.keyword || ''}
@@ -510,12 +609,23 @@ function AppContent({ isConnected }: AppContentProps) {
               <DuplicateFinder currentFolder={currentFolder} />
             ) : (
               <>
-                {stackImagesLoading && (
+                {isInitialGridLoading && (
                   <div style={{
-                    position: 'absolute', top: 10, right: 10, zIndex: 10,
-                    padding: '4px 12px', background: 'rgba(0, 0, 0, 0.7)',
-                    color: 'white', borderRadius: 4, fontSize: '0.9em'
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: 'rgba(30, 30, 30, 0.6)', zIndex: 20, backdropFilter: 'blur(2px)'
                   }}>
+                    <Loader2 size={48} color="#007acc" className="app-spinner" />
+                    <span style={{ color: '#eee', marginTop: 15, fontSize: '1.2em', fontWeight: 500 }}>Loading images...</span>
+                  </div>
+                )}
+                {(stackImagesLoading || imagesLoading || stacksLoading) && !isInitialGridLoading && (
+                  <div style={{
+                    position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 14px', background: 'rgba(0, 0, 0, 0.7)',
+                    color: 'white', borderRadius: 20, fontSize: '0.85em', fontWeight: 500
+                  }}>
+                    <Loader2 size={14} className="app-spinner" />
                     Loading...
                   </div>
                 )}
@@ -562,6 +672,15 @@ function AppContent({ isConnected }: AppContentProps) {
       />
       <NotificationTray />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <ImportModal
+        isOpen={isImportModalOpen}
+        folderPath={importFolderPath}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportFolderPath('');
+        }}
+        onComplete={refreshFolders}
+      />
     </>
   );
 }

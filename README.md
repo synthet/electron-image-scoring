@@ -1,6 +1,11 @@
 # Electron Image Scoring Gallery
 
-An AI-powered image gallery application built with Electron, React, and Vite. This application provides a high-performance interface for browsing and filtering images scored by the [Image Scoring](https://github.com/synthet/image-scoring) core engine.
+An AI-powered image gallery application built with Electron, React, and Vite.
+
+### Documentation
+For detailed technical info, architecture, and feature plans, see the **[Documentation Index](./docs/README.md)**.
+
+This application provides a high-performance interface for browsing and filtering images scored by the [Image Scoring](https://github.com/synthet/image-scoring) core engine.
 
 ## Features
 

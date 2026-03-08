@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.32.0] - 2026-03-08
+
+### Added
+- **Documentation Overhaul**: Completely restructured the `docs/` directory into a logical hierarchy (`architecture`, `features`, `guides`, `project`) for better maintainability.
+- **Centralized Indexing**: Created a new structured documentation index in `docs/README.md` and updated the root `README.md`.
+
+### Changed
+- **Roadmap Actualization**: Updated `docs/project/TODO.md` to reflect recently completed system hardening, including Database Connection Pooling, IPC Response Envelopes, and Secure Media Protocol.
+- **Embedding Documentation Consolidation**: Grouped specialized embedding application documents into a dedicated `docs/technical/features/embeddings/` subdirectory.
+
 ## [3.31.0] - 2026-03-07
 
 ### Added

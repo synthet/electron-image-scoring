@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Trash2 } from 'lucide-react';
 import type { Folder as FolderType } from './treeUtils';
 
@@ -13,6 +13,21 @@ const TreeNode: React.FC<{ node: FolderType; onSelect: (f: FolderType) => void; 
     const [expanded, setExpanded] = useState(false);
     const hasChildren = node.children && node.children.length > 0;
     const isSelected = node.id === selectedId;
+
+    useEffect(() => {
+        if (selectedId && hasChildren) {
+            const hasSelectedDescendant = (n: FolderType, targetId: number): boolean => {
+                if (n.id === targetId) return true;
+                return !!n.children?.some(c => hasSelectedDescendant(c, targetId));
+            };
+
+            // If any child subtree contains the selected root, ensure we are expanded
+            if (!expanded && node.children!.some(c => hasSelectedDescendant(c, selectedId))) {
+                // eslint-disable-next-line react-hooks/set-state-in-effect
+                setExpanded(true);
+            }
+        }
+    }, [selectedId, node, hasChildren, expanded]);
 
     const handleToggle = (e: React.MouseEvent) => {
         e.stopPropagation();

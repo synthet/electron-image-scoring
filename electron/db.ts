@@ -540,6 +540,14 @@ interface ImageDetailRow {
     win_path?: string | null;
     file_exists?: boolean;
     image_uuid?: string;
+
+    // EXIF Stats
+    exif_iso?: number | null;
+    exif_shutter?: string | null;
+    exif_aperture?: string | null;
+    exif_focal_length?: string | null;
+    exif_model?: string | null;
+    exif_lens_model?: string | null;
 }
 
 export async function getImageDetails(id: number): Promise<ImageDetailRow | null> {
@@ -574,10 +582,17 @@ export async function getImageDetails(id: number): Promise<ImageDetailRow | null
             i.created_at,
             i.burst_uuid,
             i.image_uuid,
-            fp.path as win_path
+            fp.path as win_path,
+            ex.iso as exif_iso,
+            ex.exposure_time as exif_shutter,
+            ex.f_number as exif_aperture,
+            ex.focal_length as exif_focal_length,
+            COALESCE(ex.model, ex.make) as exif_model,
+            ex.lens_model as exif_lens_model
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
             AND POSITION('/thumbnails/' IN fp.path) = 0
+        LEFT JOIN image_exif ex ON i.id = ex.image_id
         WHERE i.id = ?
     `;
     const rows = await query(sql, [id]);

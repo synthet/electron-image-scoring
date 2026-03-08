@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.31.0] - 2026-03-07
+
+### Added
+- **ApiService**: Centralized REST API client (`electron/apiService.ts`) for the Python backend (FastAPI at :7860), wrapping all HTTP calls with typed methods.
+- **apiTypes.ts**: TypeScript interfaces mirroring the FastAPI Pydantic models for health, scoring, tagging, clustering, similar search, and pipeline operations.
+
+### Changed
+- **Main process**: Refactored IPC handlers to use `ApiService` instead of inline `net.fetch()` calls for backend API operations.
+- **Preload**: Exposes API-related IPC handlers and type definitions to the renderer via `electron.d.ts`.
+- **ImageViewer**: Refactored and improved component structure.
+
 ## [3.30.0] - 2026-03-07
 
 ### Added

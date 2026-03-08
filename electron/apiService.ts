@@ -1,0 +1,308 @@
+/**
+ * Centralized REST API client for the Python backend (FastAPI at :7860).
+ * All HTTP calls to the backend go through this service.
+ *
+ * Runs in the Electron main process using `net.fetch()`.
+ */
+
+import { net } from 'electron';
+import fs from 'fs';
+import path from 'path';
+import type {
+    ApiResponse,
+    HealthResponse,
+    StatusResponse,
+    ScoringStartRequest,
+    SingleImageRequest,
+    TaggingStartRequest,
+    TaggingSingleRequest,
+    ClusteringStartRequest,
+    FindDuplicatesRequest,
+    SimilarSearchParams,
+    SimilarSearchResult,
+    PipelineSubmitRequest,
+    JobInfo,
+    DatabaseStats,
+} from './apiTypes';
+import type { AppConfig } from './types';
+
+const DEFAULT_TIMEOUT = 10_000;   // 10s for quick operations
+const LONG_TIMEOUT = 120_000;     // 2min for batch job starts
+
+export class ApiService {
+    private baseUrl: string | null = null;
+    private configLoader: () => AppConfig;
+
+    constructor(configLoader: () => AppConfig) {
+        this.configLoader = configLoader;
+    }
+
+    // ── URL Resolution ──────────────────────────────────────────────────────
+
+    /**
+     * Resolve the backend base URL.
+     * Priority: config.api.url → lock file discovery → default.
+     */
+    private resolveBaseUrl(): string {
+        if (this.baseUrl) return this.baseUrl;
+
+        const config = this.configLoader();
+
+        // 1. Explicit URL in config
+        if (config.api?.url) {
+            this.baseUrl = config.api.url.replace(/\/$/, '');
+            console.log(`[ApiService] Using configured URL: ${this.baseUrl}`);
+            return this.baseUrl;
+        }
+
+        // 2. Try lock file discovery
+        let port = config.api?.port ?? 7860;
+        const host = config.api?.host ?? '127.0.0.1';
+
+        try {
+            const projectRoot = path.resolve(__dirname, '..');
+            const projectsDir = path.resolve(projectRoot, '..');
+            const locks = [
+                path.join(projectsDir, 'image-scoring', 'webui.lock'),
+                path.join(projectsDir, 'image-scoring', 'webui-debug.lock'),
+            ];
+
+            for (const lockFile of locks) {
+                if (fs.existsSync(lockFile)) {
+                    const content = fs.readFileSync(lockFile, 'utf8');
+                    const data = JSON.parse(content);
+                    if (data?.port) {
+                        port = data.port;
+                        console.log(`[ApiService] Discovered port ${port} from ${path.basename(lockFile)}`);
+                        break;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[ApiService] Lock file read error:', e);
+        }
+
+        this.baseUrl = `http://${host}:${port}`;
+        console.log(`[ApiService] Resolved URL: ${this.baseUrl}`);
+        return this.baseUrl;
+    }
+
+    /** Force re-resolution on next call (e.g. after config change). */
+    public resetBaseUrl(): void {
+        this.baseUrl = null;
+    }
+
+    // ── Generic HTTP ────────────────────────────────────────────────────────
+
+    private async request<T>(
+        method: 'GET' | 'POST',
+        apiPath: string,
+        options?: {
+            body?: unknown;
+            params?: Record<string, string | number | undefined>;
+            timeout?: number;
+        },
+    ): Promise<T> {
+        const base = this.resolveBaseUrl();
+        const url = new URL(apiPath, base);
+
+        // Append query params for GET requests
+        if (options?.params) {
+            for (const [key, value] of Object.entries(options.params)) {
+                if (value !== undefined && value !== null) {
+                    url.searchParams.append(key, String(value));
+                }
+            }
+        }
+
+        const controller = new AbortController();
+        const timeoutMs = options?.timeout ?? DEFAULT_TIMEOUT;
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const fetchOptions: RequestInit = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+            };
+
+            if (method === 'POST' && options?.body !== undefined) {
+                fetchOptions.body = JSON.stringify(options.body);
+            }
+
+            const response = await net.fetch(url.toString(), fetchOptions);
+
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => '');
+                throw new Error(
+                    `API ${method} ${apiPath} returned HTTP ${response.status}${errorText ? `: ${errorText}` : ''}`,
+                );
+            }
+
+            return (await response.json()) as T;
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') {
+                throw new Error(`API ${method} ${apiPath} timed out after ${timeoutMs}ms`);
+            }
+            throw err;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    private get<T>(apiPath: string, params?: Record<string, string | number | undefined>, timeout?: number) {
+        return this.request<T>('GET', apiPath, { params, timeout });
+    }
+
+    private post<T>(apiPath: string, body?: unknown, timeout?: number) {
+        return this.request<T>('POST', apiPath, { body, timeout });
+    }
+
+    // ── Health & Status ─────────────────────────────────────────────────────
+
+    healthCheck() {
+        return this.get<HealthResponse>('/api/health');
+    }
+
+    getStatus() {
+        return this.get<StatusResponse>('/api/status');
+    }
+
+    getSchema() {
+        return this.get<unknown>('/api/schema');
+    }
+
+    /**
+     * Quick connectivity test. Returns true if backend responds, false otherwise.
+     */
+    async isAvailable(): Promise<boolean> {
+        try {
+            await this.healthCheck();
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    // ── Scoring ─────────────────────────────────────────────────────────────
+
+    startScoring(opts: ScoringStartRequest) {
+        return this.post<ApiResponse>('/api/scoring/start', opts, LONG_TIMEOUT);
+    }
+
+    stopScoring() {
+        return this.post<ApiResponse>('/api/scoring/stop');
+    }
+
+    getScoringStatus() {
+        return this.get<StatusResponse>('/api/scoring/status');
+    }
+
+    scoreSingleImage(filePath: string) {
+        const body: SingleImageRequest = { file_path: filePath };
+        return this.post<ApiResponse>('/api/scoring/single', body, LONG_TIMEOUT);
+    }
+
+    fixScoringDb() {
+        return this.post<ApiResponse>('/api/scoring/fix-db', undefined, LONG_TIMEOUT);
+    }
+
+    fixImage(filePath: string) {
+        return this.post<ApiResponse>('/api/scoring/fix-image', { file_path: filePath }, LONG_TIMEOUT);
+    }
+
+    // ── Tagging ─────────────────────────────────────────────────────────────
+
+    startTagging(opts: TaggingStartRequest) {
+        return this.post<ApiResponse>('/api/tagging/start', opts, LONG_TIMEOUT);
+    }
+
+    stopTagging() {
+        return this.post<ApiResponse>('/api/tagging/stop');
+    }
+
+    getTaggingStatus() {
+        return this.get<StatusResponse>('/api/tagging/status');
+    }
+
+    tagSingleImage(opts: TaggingSingleRequest) {
+        return this.post<ApiResponse>('/api/tagging/single', opts, LONG_TIMEOUT);
+    }
+
+    // ── Clustering ──────────────────────────────────────────────────────────
+
+    startClustering(opts: ClusteringStartRequest) {
+        return this.post<ApiResponse>('/api/clustering/start', opts, LONG_TIMEOUT);
+    }
+
+    stopClustering() {
+        return this.post<ApiResponse>('/api/clustering/stop');
+    }
+
+    getClusteringStatus() {
+        return this.get<StatusResponse>('/api/clustering/status');
+    }
+
+    // ── Pipeline ────────────────────────────────────────────────────────────
+
+    submitPipeline(opts: PipelineSubmitRequest) {
+        return this.post<ApiResponse>('/api/pipeline/submit', opts, LONG_TIMEOUT);
+    }
+
+    // ── Duplicates & Similarity ─────────────────────────────────────────────
+
+    findDuplicates(opts?: FindDuplicatesRequest) {
+        return this.post<ApiResponse>('/api/duplicates/find', opts ?? {}, LONG_TIMEOUT);
+    }
+
+    searchSimilar(opts: SimilarSearchParams) {
+        return this.get<SimilarSearchResult>('/api/similar', {
+            image_id: opts.image_id,
+            limit: opts.limit,
+            folder_path: opts.folder_path,
+            min_similarity: opts.min_similarity,
+        });
+    }
+
+    // ── Data (read-only) ────────────────────────────────────────────────────
+
+    getImages(params?: Record<string, string | number | undefined>) {
+        return this.get<unknown>('/api/images', params);
+    }
+
+    getImageById(id: number) {
+        return this.get<unknown>(`/api/images/${id}`);
+    }
+
+    getFolders() {
+        return this.get<unknown>('/api/folders');
+    }
+
+    getStacks() {
+        return this.get<unknown>('/api/stacks');
+    }
+
+    getStackImages(stackId: number) {
+        return this.get<unknown>(`/api/stacks/${stackId}/images`);
+    }
+
+    getStats() {
+        return this.get<DatabaseStats>('/api/stats');
+    }
+
+    // ── Jobs ────────────────────────────────────────────────────────────────
+
+    getRecentJobs() {
+        return this.get<JobInfo[]>('/api/jobs/recent');
+    }
+
+    getJob(jobId: string | number) {
+        return this.get<JobInfo>(`/api/jobs/${jobId}`);
+    }
+
+    // ── Preview ─────────────────────────────────────────────────────────────
+
+    getRawPreview(filePath: string) {
+        return this.get<unknown>('/api/raw-preview', { path: filePath });
+    }
+}

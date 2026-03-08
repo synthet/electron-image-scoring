@@ -6,6 +6,7 @@ import isDev from 'electron-is-dev';
 import * as db from './db';
 import { nefExtractor } from './nefExtractor';
 import { ExifTool } from 'exiftool-vendored';
+import { ApiService } from './apiService';
 
 const exiftool = new ExifTool({ maxProcs: 2 });
 
@@ -171,6 +172,7 @@ function loadConfig() {
 }
 
 const config = loadConfig();
+const apiService = new ApiService(loadConfig);
 const devRemoteDebuggingPort = process.env.ELECTRON_REMOTE_DEBUGGING_PORT || '9222';
 
 if (isDev) {
@@ -292,53 +294,19 @@ app.whenReady().then(async () => {
 
     ipcMain.handle('mcp-find-duplicates', wrapIpcHandler(async (_, options) => {
         console.log(`[Main] Finding near duplicates via backend API`, options);
-        try {
-            const response = await net.fetch('http://127.0.0.1:7860/api/duplicates/find', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(options || {})
-            });
-            if (!response.ok) {
-                throw new Error(`API returned HTTP ${response.status}`);
-            }
-            const data = await response.json();
-            return data;
-        } catch (e: unknown) {
-            console.error('[Main] Failed to fetch duplicates from backend:', e);
-            return { success: false, error: e instanceof Error ? e.message : String(e) };
-        }
+        return await apiService.findDuplicates(options);
     }));
 
     ipcMain.handle('mcp:search-similar', wrapIpcHandler(async (_, options) => {
         console.log(`[Main] Finding similar images via backend API`, options);
-        try {
-            const { imageId, limit = 20, folderPath, minSimilarity } = options;
-            if (!imageId) throw new Error("image_id is required");
-
-            const url = new URL('http://127.0.0.1:7860/api/similar');
-            url.searchParams.append('image_id', imageId.toString());
-            url.searchParams.append('limit', limit.toString());
-            if (folderPath) url.searchParams.append('folder_path', folderPath);
-            if (minSimilarity !== undefined) url.searchParams.append('min_similarity', minSimilarity.toString());
-
-            const response = await net.fetch(url.toString(), {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API returned HTTP ${response.status}: ${errorText}`);
-            }
-            const data = await response.json();
-            return data;
-        } catch (e: unknown) {
-            console.error('[Main] Failed to fetch similar images from backend:', e);
-            throw e; // Rethrow so wrapIpcHandler formats it 
-        }
+        const { imageId, limit, folderPath, minSimilarity } = options;
+        if (!imageId) throw new Error("image_id is required");
+        return await apiService.searchSimilar({
+            image_id: imageId,
+            limit,
+            folder_path: folderPath,
+            min_similarity: minSimilarity,
+        });
     }));
 
     ipcMain.handle('db:get-stacks', wrapIpcHandler(async (_, options) => {
@@ -649,6 +617,84 @@ app.whenReady().then(async () => {
             console.error('[Main] Error writing config:', e);
             throw e;
         }
+    }));
+
+    // ── Backend API handlers (via ApiService) ─────────────────────────────
+    ipcMain.handle('api:health', wrapIpcHandler(async () => {
+        return await apiService.healthCheck();
+    }));
+
+    ipcMain.handle('api:is-available', wrapIpcHandler(async () => {
+        return await apiService.isAvailable();
+    }));
+
+    ipcMain.handle('api:status', wrapIpcHandler(async () => {
+        return await apiService.getStatus();
+    }));
+
+    ipcMain.handle('api:stats', wrapIpcHandler(async () => {
+        return await apiService.getStats();
+    }));
+
+    // Scoring
+    ipcMain.handle('api:scoring-start', wrapIpcHandler(async (_, opts) => {
+        return await apiService.startScoring(opts);
+    }));
+
+    ipcMain.handle('api:scoring-stop', wrapIpcHandler(async () => {
+        return await apiService.stopScoring();
+    }));
+
+    ipcMain.handle('api:scoring-status', wrapIpcHandler(async () => {
+        return await apiService.getScoringStatus();
+    }));
+
+    ipcMain.handle('api:scoring-single', wrapIpcHandler(async (_, filePath: string) => {
+        return await apiService.scoreSingleImage(filePath);
+    }));
+
+    // Tagging
+    ipcMain.handle('api:tagging-start', wrapIpcHandler(async (_, opts) => {
+        return await apiService.startTagging(opts);
+    }));
+
+    ipcMain.handle('api:tagging-stop', wrapIpcHandler(async () => {
+        return await apiService.stopTagging();
+    }));
+
+    ipcMain.handle('api:tagging-status', wrapIpcHandler(async () => {
+        return await apiService.getTaggingStatus();
+    }));
+
+    ipcMain.handle('api:tagging-single', wrapIpcHandler(async (_, opts) => {
+        return await apiService.tagSingleImage(opts);
+    }));
+
+    // Clustering
+    ipcMain.handle('api:clustering-start', wrapIpcHandler(async (_, opts) => {
+        return await apiService.startClustering(opts);
+    }));
+
+    ipcMain.handle('api:clustering-stop', wrapIpcHandler(async () => {
+        return await apiService.stopClustering();
+    }));
+
+    ipcMain.handle('api:clustering-status', wrapIpcHandler(async () => {
+        return await apiService.getClusteringStatus();
+    }));
+
+    // Pipeline
+    ipcMain.handle('api:pipeline-submit', wrapIpcHandler(async (_, opts) => {
+        return await apiService.submitPipeline(opts);
+    }));
+
+    // Jobs
+    ipcMain.handle('api:jobs-recent', wrapIpcHandler(async () => {
+        return await apiService.getRecentJobs();
+    }));
+
+    ipcMain.handle('api:job-detail', wrapIpcHandler(async (_, jobId: string | number) => {
+        return await apiService.getJob(jobId);
     }));
 
     console.log('[Main] All IPC handlers registered. Creating window...');

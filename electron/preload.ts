@@ -1,5 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ImageQueryOptions, ImageRow, ImageDetail, ImageUpdates, FolderRow, DuplicateResponse, AppConfig } from './types';
+import type {
+    ApiResponse as BackendApiResponse,
+    HealthResponse,
+    StatusResponse,
+    ScoringStartRequest,
+    TaggingStartRequest,
+    TaggingSingleRequest,
+    ClusteringStartRequest,
+    PipelineSubmitRequest,
+    JobInfo,
+    DatabaseStats,
+} from './apiTypes';
 
 /**
  * Unwraps IPC envelope responses.
@@ -135,5 +147,91 @@ contextBridge.exposeInMainWorld('electron', {
         return () => {
             ipcRenderer.removeListener('import:progress', handler);
         };
+    },
+
+    // ── Backend API (Python REST) ───────────────────────────────────────
+    api: {
+        healthCheck: async () => {
+            const r = await ipcRenderer.invoke('api:health');
+            return unwrapEnvelope<HealthResponse>(r);
+        },
+        isAvailable: async () => {
+            const r = await ipcRenderer.invoke('api:is-available');
+            return unwrapEnvelope<boolean>(r);
+        },
+        getStatus: async () => {
+            const r = await ipcRenderer.invoke('api:status');
+            return unwrapEnvelope<StatusResponse>(r);
+        },
+        getStats: async () => {
+            const r = await ipcRenderer.invoke('api:stats');
+            return unwrapEnvelope<DatabaseStats>(r);
+        },
+
+        // Scoring
+        startScoring: async (opts: ScoringStartRequest) => {
+            const r = await ipcRenderer.invoke('api:scoring-start', opts);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        stopScoring: async () => {
+            const r = await ipcRenderer.invoke('api:scoring-stop');
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        getScoringStatus: async () => {
+            const r = await ipcRenderer.invoke('api:scoring-status');
+            return unwrapEnvelope<StatusResponse>(r);
+        },
+        scoreSingleImage: async (filePath: string) => {
+            const r = await ipcRenderer.invoke('api:scoring-single', filePath);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+
+        // Tagging
+        startTagging: async (opts: TaggingStartRequest) => {
+            const r = await ipcRenderer.invoke('api:tagging-start', opts);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        stopTagging: async () => {
+            const r = await ipcRenderer.invoke('api:tagging-stop');
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        getTaggingStatus: async () => {
+            const r = await ipcRenderer.invoke('api:tagging-status');
+            return unwrapEnvelope<StatusResponse>(r);
+        },
+        tagSingleImage: async (opts: TaggingSingleRequest) => {
+            const r = await ipcRenderer.invoke('api:tagging-single', opts);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+
+        // Clustering
+        startClustering: async (opts: ClusteringStartRequest) => {
+            const r = await ipcRenderer.invoke('api:clustering-start', opts);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        stopClustering: async () => {
+            const r = await ipcRenderer.invoke('api:clustering-stop');
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        getClusteringStatus: async () => {
+            const r = await ipcRenderer.invoke('api:clustering-status');
+            return unwrapEnvelope<StatusResponse>(r);
+        },
+
+        // Pipeline
+        submitPipeline: async (opts: PipelineSubmitRequest) => {
+            const r = await ipcRenderer.invoke('api:pipeline-submit', opts);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+
+        // Jobs
+        getRecentJobs: async () => {
+            const r = await ipcRenderer.invoke('api:jobs-recent');
+            return unwrapEnvelope<JobInfo[]>(r);
+        },
+        getJobDetail: async (jobId: string | number) => {
+            const r = await ipcRenderer.invoke('api:job-detail', jobId);
+            return unwrapEnvelope<JobInfo>(r);
+        },
     },
 });

@@ -102,7 +102,7 @@ export function SimilarSearchDrawer({ open, onClose, queryImageId, onSelectImage
                                 }}
                             >
                                 <img
-                                    src={`file://${img.file_path}`}
+                                    src={`media://${img.file_path}`}
                                     alt={`Similar match ${(img.similarity * 100).toFixed(1)}%`}
                                     style={{
                                         position: 'absolute',

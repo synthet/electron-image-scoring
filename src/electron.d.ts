@@ -141,6 +141,120 @@ declare global {
             onImportFolderSelected: (callback: (folderPath: string) => void) => () => void;
             importRun: (folderPath: string) => Promise<{ added: number; skipped: number; errors: string[] }>;
             onImportProgress: (callback: (data: { current: number; total: number; path?: string }) => void) => () => void;
+
+            // ── Backend API (Python REST) ───────────────────────────────
+            api: {
+                healthCheck: () => Promise<BackendHealthResponse>;
+                isAvailable: () => Promise<boolean>;
+                getStatus: () => Promise<BackendStatusResponse>;
+                getStats: () => Promise<BackendDatabaseStats>;
+
+                // Scoring
+                startScoring: (opts: BackendScoringStartRequest) => Promise<BackendApiResponse>;
+                stopScoring: () => Promise<BackendApiResponse>;
+                getScoringStatus: () => Promise<BackendStatusResponse>;
+                scoreSingleImage: (filePath: string) => Promise<BackendApiResponse>;
+
+                // Tagging
+                startTagging: (opts: BackendTaggingStartRequest) => Promise<BackendApiResponse>;
+                stopTagging: () => Promise<BackendApiResponse>;
+                getTaggingStatus: () => Promise<BackendStatusResponse>;
+                tagSingleImage: (opts: BackendTaggingSingleRequest) => Promise<BackendApiResponse>;
+
+                // Clustering
+                startClustering: (opts: BackendClusteringStartRequest) => Promise<BackendApiResponse>;
+                stopClustering: () => Promise<BackendApiResponse>;
+                getClusteringStatus: () => Promise<BackendStatusResponse>;
+
+                // Pipeline
+                submitPipeline: (opts: BackendPipelineSubmitRequest) => Promise<BackendApiResponse>;
+
+                // Jobs
+                getRecentJobs: () => Promise<BackendJobInfo[]>;
+                getJobDetail: (jobId: string | number) => Promise<BackendJobInfo>;
+            };
         };
     };
+}
+
+// ── Backend API types (mirrors electron/apiTypes.ts for renderer) ────
+
+interface BackendApiResponse {
+    success: boolean;
+    message: string;
+    data?: Record<string, unknown>;
+}
+
+interface BackendHealthResponse {
+    status: string;
+    scoring_available: boolean;
+    tagging_available: boolean;
+    clustering_available: boolean;
+}
+
+interface BackendStatusResponse {
+    is_running: boolean;
+    status_message: string;
+    progress: { current: number; total: number };
+    log: string;
+    job_type?: string | null;
+}
+
+interface BackendScoringStartRequest {
+    input_path: string;
+    skip_existing?: boolean;
+    force_rescore?: boolean;
+}
+
+interface BackendTaggingStartRequest {
+    input_path: string;
+    custom_keywords?: string[] | null;
+    overwrite?: boolean;
+    generate_captions?: boolean;
+}
+
+interface BackendTaggingSingleRequest {
+    file_path: string;
+    custom_keywords?: string[] | null;
+    generate_captions?: boolean;
+}
+
+interface BackendClusteringStartRequest {
+    input_path?: string | null;
+    threshold?: number | null;
+    time_gap?: number | null;
+    force_rescan?: boolean;
+}
+
+interface BackendPipelineSubmitRequest {
+    input_path: string;
+    operations?: string[];
+    skip_existing?: boolean;
+    custom_keywords?: string[] | null;
+    generate_captions?: boolean;
+    clustering_threshold?: number | null;
+}
+
+interface BackendJobInfo {
+    job_id: string | number;
+    job_type: string;
+    status: string;
+    created_at?: string;
+    completed_at?: string;
+    progress?: { current: number; total: number };
+    [key: string]: unknown;
+}
+
+interface BackendDatabaseStats {
+    total_images: number;
+    by_rating: Record<string, number>;
+    by_label: Record<string, number>;
+    score_distribution: Record<string, number>;
+    average_scores: Record<string, number>;
+    total_folders: number;
+    total_stacks: number;
+    jobs_by_status: Record<string, number>;
+    images_today: number;
+    error?: string;
+    [key: string]: unknown;
 }

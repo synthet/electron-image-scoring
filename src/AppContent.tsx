@@ -442,7 +442,7 @@ function AppContent({ isConnected }: AppContentProps) {
               </div>
             )}
 
-            <h3 style={{ marginBottom: 10 }}>Folders</h3>
+            <h3 style={{ marginBottom: 10, marginTop: 0 }}>Folders</h3>
             <div style={{ marginBottom: 10, fontSize: '0.8em', color: '#888' }}>
               <p>DB Status:
                 <span style={{
@@ -612,11 +612,10 @@ function AppContent({ isConnected }: AppContentProps) {
                 {isInitialGridLoading && (
                   <div style={{
                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: 'rgba(30, 30, 30, 0.6)', zIndex: 20, backdropFilter: 'blur(2px)'
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 20
                   }}>
-                    <Loader2 size={48} color="#007acc" className="app-spinner" />
-                    <span style={{ color: '#eee', marginTop: 15, fontSize: '1.2em', fontWeight: 500 }}>Loading images...</span>
+                    <div style={{ color: '#aaa' }}>Loading images...</div>
                   </div>
                 )}
                 {(stackImagesLoading || imagesLoading || stacksLoading) && !isInitialGridLoading && (
@@ -663,6 +662,14 @@ function AppContent({ isConnected }: AppContentProps) {
                     currentIndex={currentImageIndex}
                     onNavigate={handleNavigateImage}
                     onDelete={handleImageDelete}
+                    onOpenFolder={(folderId) => {
+                      setSelectedFolderId(folderId);
+                      setIncludeSubfolders(false);
+                      setActiveStackId(null);
+                      setActiveStackInfo(null);
+                      setStackImages([]);
+                      closeViewer();
+                    }}
                   />
                 )}
               </>

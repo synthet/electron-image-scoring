@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw, AlertTriangle, Search } from 'lucide-react';
+import { X, Star, FileText, Edit2, Trash2, Save, RotateCcw, AlertTriangle, Search, FolderOpen } from 'lucide-react';
 import { SimilarSearchDrawer } from './SimilarSearchDrawer';
 
 interface Image {
@@ -26,6 +26,13 @@ interface Image {
     win_path?: string;
     file_exists?: boolean;
     image_uuid?: string;
+
+    exif_iso?: number | null;
+    exif_shutter?: string | null;
+    exif_aperture?: string | null;
+    exif_focal_length?: string | null;
+    exif_model?: string | null;
+    exif_lens_model?: string | null;
 }
 
 interface ImageViewerProps {
@@ -35,6 +42,7 @@ interface ImageViewerProps {
     currentIndex?: number;
     onNavigate?: (newIndex: number) => void;
     onDelete?: (id: number) => void;
+    onOpenFolder?: (folderId: number) => void;
 }
 
 const isWebSafe = (filename: string) => {
@@ -74,7 +82,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     allImages = [],
     currentIndex = 0,
     onNavigate,
-    onDelete
+    onDelete,
+    onOpenFolder
 }) => {
     const [image, setImage] = React.useState<Image>(initialImage);
     const [detailsLoaded, setDetailsLoaded] = React.useState(false);
@@ -127,10 +136,26 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         return () => { active = false; };
     }, [image.id]);
 
-    // Lazy load EXIF data
+    // Lazy load or use DB EXIF data
     useEffect(() => {
         let active = true;
         setExifData(null);
+
+        // First check if EXIF is populated from our recent specific DB fetch
+        if (
+            image.exif_iso || image.exif_shutter || image.exif_aperture ||
+            image.exif_focal_length || image.exif_model || image.exif_lens_model
+        ) {
+            setExifData({
+                ISO: image.exif_iso || undefined,
+                ShutterSpeed: image.exif_shutter || undefined,
+                Aperture: image.exif_aperture ? Number(image.exif_aperture) : undefined,
+                FocalLength: image.exif_focal_length || undefined,
+                Model: image.exif_model || undefined,
+                LensModel: image.exif_lens_model || undefined
+            });
+            return;
+        }
 
         const fetchExif = async () => {
             if (!window.electron) return;
@@ -159,7 +184,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
         fetchExif();
         return () => { active = false; };
-    }, [image.win_path, image.file_path]);
+    }, [
+        image.win_path, image.file_path, image.exif_iso, image.exif_shutter,
+        image.exif_aperture, image.exif_focal_length, image.exif_model, image.exif_lens_model
+    ]);
 
     // Editing & Drawer State
     const [isEditing, setIsEditing] = useState(false);
@@ -502,30 +530,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             </>
                         )}
                     </div>
-                    {!isEditing && (
-                        <button
-                            onClick={() => setIsSimilarDrawerOpen(true)}
-                            style={{
-                                width: '100%',
-                                padding: '8px',
-                                background: '#333',
-                                color: 'white',
-                                border: '1px solid #555',
-                                borderRadius: 4,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 8,
-                                transition: 'background-color 0.2s',
-                                fontWeight: 500
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#444' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#333' }}
-                        >
-                            <Search size={16} /> Find Similar Images
-                        </button>
-                    )}
                 </div>
 
                 {!isEditing ? (
@@ -566,6 +570,58 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         </div>
                     </div>
                 )}
+
+                {/* Keywords / Tags */}
+                <div style={{ marginTop: 5, marginBottom: 5 }}>
+                    <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>KEYWORDS</div>
+                    {isEditing ? (
+                        <>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                                {keywordItems.map((tag, i) => (
+                                    <div
+                                        key={`${tag}-${i}`}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#333', padding: '2px 8px', borderRadius: 4, fontSize: '0.8em', color: '#ccc' }}
+                                    >
+                                        <span>{tag}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const next = keywordItems.filter((t, idx) => !(t === tag && idx === i));
+                                                setEditForm({ ...editForm, keywords: next.join(', ') });
+                                            }}
+                                            style={{ border: 'none', background: 'transparent', color: '#888', cursor: 'pointer', padding: 0, fontSize: '0.9em', lineHeight: 1 }}
+                                            aria-label={`Remove keyword ${tag}`}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Comma separated keywords..."
+                                value={editForm.keywords}
+                                onChange={e => setEditForm({ ...editForm, keywords: e.target.value })}
+                                style={{ width: '100%', padding: 5, background: '#333', color: 'white', border: '1px solid #555', borderRadius: 4 }}
+                            />
+                        </>
+                    ) : (
+                        keywordItems.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {keywordItems.map((tag, i) => (
+                                    <div
+                                        key={`${tag}-${i}`}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#333', padding: '2px 8px', borderRadius: 4, fontSize: '0.8em', color: '#ccc' }}
+                                    >
+                                        <span>{tag}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: '0.8em', color: '#666' }}>No keywords</div>
+                        )
+                    )}
+                </div>
 
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', borderTop: '1px solid #333', borderBottom: '1px solid #333' }}>
                     <div style={{ flex: 1 }}>
@@ -659,53 +715,44 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             {(image.score_liqe ?? 0) > 0 && <ScoreBar label="LIQE" value={image.score_liqe ?? 0} />}
                         </div>
 
-                        {/* Stack/Burst Info */}
-                        {(image.stack_id || image.burst_uuid) && (
-                            <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
-                                <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Stack/Burst</div>
-                                <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                    {image.stack_id && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: '#888' }}>Stack ID:</span>
-                                            <span>{image.stack_id}</span>
-                                        </div>
-                                    )}
-                                    {image.burst_uuid && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                            <span style={{ color: '#888' }}>Burst UUID:</span>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
-                                                {image.burst_uuid}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
                         {/* Database IDs */}
                         <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
                             <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Database Info</div>
                             <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#888' }}>Image ID:</span>
-                                    <span>{image.id}</span>
-                                </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                     <span style={{ color: '#888' }}>Image UUID:</span>
                                     <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
                                         {image.image_uuid || 'None'}
                                     </span>
                                 </div>
-                                {image.job_id && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: '#888' }}>Job ID:</span>
-                                        <span>{image.job_id}</span>
+                                {image.burst_uuid && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <span style={{ color: '#888' }}>Burst UUID:</span>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
+                                            {image.burst_uuid}
+                                        </span>
                                     </div>
                                 )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#888' }}>Image ID:</span>
+                                    <span>{image.id}</span>
+                                </div>
                                 {image.folder_id && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ color: '#888' }}>Folder ID:</span>
                                         <span>{image.folder_id}</span>
+                                    </div>
+                                )}
+                                {image.stack_id && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Stack ID:</span>
+                                        <span>{image.stack_id}</span>
+                                    </div>
+                                )}
+                                {image.job_id && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Job ID:</span>
+                                        <span>{image.job_id}</span>
                                     </div>
                                 )}
                             </div>
@@ -752,59 +799,90 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             )}
                         </div>
 
-                        {/* Keywords / Tags (after Database Info) */}
+                        {/* Phases Info */}
                         <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
-                            <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>KEYWORDS</div>
-                            {keywordItems.length > 0 ? (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {keywordItems.map((tag, i) => (
-                                        <div
-                                            key={`${tag}-${i}`}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 6,
-                                                background: '#333',
-                                                padding: '2px 8px',
-                                                borderRadius: 4,
-                                                fontSize: '0.8em',
-                                                color: '#ccc'
-                                            }}
-                                        >
-                                            <span>{tag}</span>
-                                            {isEditing && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const next = keywordItems.filter((t, idx) => !(t === tag && idx === i));
-                                                        setEditForm({
-                                                            ...editForm,
-                                                            keywords: next.join(', ')
-                                                        });
-                                                    }}
-                                                    style={{
-                                                        border: 'none',
-                                                        background: 'transparent',
-                                                        color: '#888',
-                                                        cursor: 'pointer',
-                                                        padding: 0,
-                                                        fontSize: '0.9em',
-                                                        lineHeight: 1
-                                                    }}
-                                                    aria-label={`Remove keyword ${tag}`}
-                                                >
-                                                    ×
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
+                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Phases</div>
+                            <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#888' }}>Scoring:</span>
+                                    <span style={{ color: image.score_general !== null && image.score_general !== undefined ? '#4caf50' : '#ffa726' }}>
+                                        {image.score_general !== null && image.score_general !== undefined ? 'Completed' : 'Pending'}
+                                    </span>
                                 </div>
-                            ) : (
-                                <div style={{ fontSize: '0.8em', color: '#666' }}>No keywords</div>
-                            )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#888' }}>Metadata:</span>
+                                    <span style={{ color: exifData ? '#4caf50' : '#ffa726' }}>
+                                        {exifData ? 'Extracted' : 'Pending'}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#888' }}>Culling:</span>
+                                    <span style={{ color: image.rating > 0 || (image.label && image.label !== 'None') ? '#4caf50' : '#ffa726' }}>
+                                        {image.rating > 0 || (image.label && image.label !== 'None') ? 'Completed' : 'Pending'}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#888' }}>Keywords:</span>
+                                    <span style={{ color: image.keywords ? '#4caf50' : '#ffa726' }}>
+                                        {image.keywords ? 'Completed' : 'Pending'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </>
                 )}
+
+                {/* Bottom Action Area */}
+                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid #333', paddingTop: 20 }}>
+                    {!isEditing && (
+                        <>
+                            {image.folder_id && onOpenFolder && (
+                                <button
+                                    onClick={() => onOpenFolder(image.folder_id!)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px',
+                                        background: '#007acc',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: 4,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 8,
+                                        fontWeight: 500
+                                    }}
+                                >
+                                    <FolderOpen size={16} /> Open Folder
+                                </button>
+                            )}
+
+                            <button
+                                onClick={() => setIsSimilarDrawerOpen(true)}
+                                style={{
+                                    width: '100%',
+                                    padding: '8px',
+                                    background: '#333',
+                                    color: 'white',
+                                    border: '1px solid #555',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8,
+                                    transition: 'background-color 0.2s',
+                                    fontWeight: 500
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#444' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#333' }}
+                            >
+                                <Search size={16} /> Find Similar Images
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
             <SimilarSearchDrawer

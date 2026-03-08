@@ -14,7 +14,13 @@
       "Bash(python3 -c \"import fdb; print\\(''fdb ok''\\)\")",
       "Bash(python3 -c \"import firebird.driver; print\\(''firebird.driver ok''\\)\")",
       "Bash(python -c \"import fdb; print\\(''fdb ok''\\)\")",
-      "Bash(python3 -c \"from firebird.driver import connect; help\\(connect\\)\")"
+      "Bash(python3 -c \"from firebird.driver import connect; help\\(connect\\)\")",
+      "Bash(python3 migrate_salvage.py)",
+      "Bash(grep -A5 \"selectFolder\\\\|pickFolder\\\\|chooseFolder\\\\|browseFolder\" /d/Projects/electron-image-scoring/src/components/**/*.tsx)",
+      "Bash(xargs grep -l \"ImportModal\\\\|onImportFolderSelected\")"
+    ],
+    "additionalDirectories": [
+      "D:\\Projects\\image-scoring"
     ]
   }
 }

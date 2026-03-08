@@ -32,6 +32,7 @@ Detailed technical documentation and implementation notes.
 
 | Document | Description | Read Time |
 |----------|-------------|-----------|
+| **[DB_ENGINE_RECOMMENDATION.md](technical/DB_ENGINE_RECOMMENDATION.md)** | Database engine recommendation and migration guidance | 4 min |
 | **[NEF_EXTRACTION_DIAGNOSIS.md](technical/NEF_EXTRACTION_DIAGNOSIS.md)** | NEF extraction multi-tier fallback analysis | 8 min |
 | **[WINDOWS_NATIVE_VIEWER_PLAN.md](technical/WINDOWS_NATIVE_VIEWER_PLAN.md)** | Windows native viewer planning | 5 min |
 

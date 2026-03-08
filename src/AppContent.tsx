@@ -79,10 +79,18 @@ function AppContent({ isConnected }: AppContentProps) {
       });
     }
 
+    let cleanupNotification: (() => void) | undefined;
+    if (window.electron?.onShowNotification) {
+      cleanupNotification = window.electron.onShowNotification((data) => {
+        addNotification(data.message, data.type);
+      });
+    }
+
     return () => {
       if (cleanupSettings) cleanupSettings();
       if (cleanupDuplicates) cleanupDuplicates();
       if (cleanupImport) cleanupImport();
+      if (cleanupNotification) cleanupNotification();
     };
   }, []);
 

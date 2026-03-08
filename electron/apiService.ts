@@ -20,6 +20,8 @@ import type {
     FindDuplicatesRequest,
     SimilarSearchParams,
     SimilarSearchResult,
+    ImportRegisterRequest,
+    ImportRegisterResponse,
     PipelineSubmitRequest,
     JobInfo,
     DatabaseStats,
@@ -243,6 +245,12 @@ export class ApiService {
         return this.get<StatusResponse>('/api/clustering/status');
     }
 
+    // ── Import ──────────────────────────────────────────────────────────────
+
+    importRegister(opts: ImportRegisterRequest) {
+        return this.post<ImportRegisterResponse>('/api/import/register', opts, LONG_TIMEOUT);
+    }
+
     // ── Pipeline ────────────────────────────────────────────────────────────
 
     submitPipeline(opts: PipelineSubmitRequest) {
@@ -293,11 +301,16 @@ export class ApiService {
     // ── Jobs ────────────────────────────────────────────────────────────────
 
     getRecentJobs() {
-        return this.get<JobInfo[]>('/api/jobs/recent');
+        return this.get<JobInfo[]>('/api/jobs/recent').then((jobs) =>
+            jobs.map((j) => ({ ...j, job_id: j.job_id ?? j.id }))
+        );
     }
 
     getJob(jobId: string | number) {
-        return this.get<JobInfo>(`/api/jobs/${jobId}`);
+        return this.get<JobInfo>(`/api/jobs/${jobId}`).then((j) => ({
+            ...j,
+            job_id: j.job_id ?? j.id,
+        }));
     }
 
     // ── Preview ─────────────────────────────────────────────────────────────

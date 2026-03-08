@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ImageQueryOptions, ImageRow, ImageDetail, ImageUpdates, FolderRow, DuplicateResponse, AppConfig } from './types';
+import type { ImageQueryOptions, ImageRow, ImageDetail, ImageUpdates, FolderRow, DuplicateResponse, AppConfig, ExportImageContext } from './types';
 import type {
     ApiResponse as BackendApiResponse,
     HealthResponse,
@@ -109,7 +109,7 @@ contextBridge.exposeInMainWorld('electron', {
         const response = await ipcRenderer.invoke('system:save-config', updates);
         return unwrapEnvelope<AppConfig>(response);
     },
-    setCurrentExportImageContext: async (context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => {
+    setCurrentExportImageContext: async (context: ExportImageContext | null) => {
         return ipcRenderer.invoke('export:set-current-image-context', context);
     },
     readExif: async (filePath: string) => {
@@ -146,6 +146,13 @@ contextBridge.exposeInMainWorld('electron', {
         ipcRenderer.on('import:progress', handler);
         return () => {
             ipcRenderer.removeListener('import:progress', handler);
+        };
+    },
+    onShowNotification: (callback: (data: { message: string; type: 'info' | 'success' | 'warning' | 'error' }) => void) => {
+        const handler = (_: unknown, data: { message: string; type: 'info' | 'success' | 'warning' | 'error' }) => callback(data);
+        ipcRenderer.on('show-notification', handler);
+        return () => {
+            ipcRenderer.removeListener('show-notification', handler);
         };
     },
 

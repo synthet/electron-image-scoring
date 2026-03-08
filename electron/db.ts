@@ -683,14 +683,28 @@ export async function deleteFolder(id: number): Promise<boolean> {
 
 /**
  * Normalize a file system path for consistent storage in the database.
- * Uses forward slashes; on Windows converts to D:/ style.
+ * Always stores paths in WSL format (/mnt/d/...) to match the Python backend.
+ * On Windows, converts drive-letter paths (D:\... or D:/...) to /mnt/d/...
+ * Paths already in WSL format are returned as-is (before resolve, to avoid mangling).
  */
 function normalizePathForDb(filePath: string): string {
-    const resolved = path.resolve(filePath);
+    const withSlashes = filePath.replace(/\\/g, '/');
     if (process.platform === 'win32') {
-        return resolved.replace(/\\/g, '/');
+        // Pass through paths already in WSL format (e.g. from Python backend)
+        if (withSlashes.match(/^\/mnt\/[a-zA-Z]\//)) {
+            return withSlashes;
+        }
+        const resolved = path.resolve(filePath);
+        const withForwardSlashes = resolved.replace(/\\/g, '/');
+        const driveMatch = withForwardSlashes.match(/^([A-Za-z]):\//);
+        if (driveMatch) {
+            const drive = driveMatch[1].toLowerCase();
+            const rest = withForwardSlashes.slice(3);
+            return `/mnt/${drive}/${rest}`;
+        }
+        return withForwardSlashes;
     }
-    return resolved;
+    return path.resolve(filePath);
 }
 
 /**

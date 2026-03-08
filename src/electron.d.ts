@@ -134,13 +134,14 @@ declare global {
             getApiConfig: () => Promise<{ url: string }>;
             getConfig: () => Promise<AppConfig>;
             saveConfig: (updates: Partial<AppConfig>) => Promise<AppConfig>;
-            setCurrentExportImageContext: (context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => Promise<boolean>;
+            setCurrentExportImageContext: (context: { imageBytes: number[]; mimeType: string; fileName: string; id: number; sourcePath: string; imageUuid: string | null } | null) => Promise<boolean>;
             readExif: (filePath: string) => Promise<any>;
             onOpenSettings: (callback: () => void) => () => void;
             onOpenDuplicates: (callback: () => void) => () => void;
             onImportFolderSelected: (callback: (folderPath: string) => void) => () => void;
             importRun: (folderPath: string) => Promise<{ added: number; skipped: number; errors: string[] }>;
             onImportProgress: (callback: (data: { current: number; total: number; path?: string }) => void) => () => void;
+            onShowNotification: (callback: (data: { message: string; type: 'info' | 'success' | 'warning' | 'error' }) => void) => () => void;
 
             // ── Backend API (Python REST) ───────────────────────────────
             api: {

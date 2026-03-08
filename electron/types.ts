@@ -119,3 +119,11 @@ export interface AppConfig {
     selection?: Record<string, unknown>;
     [key: string]: unknown;
 }
+export interface ExportImageContext {
+    imageBytes: number[];
+    mimeType: string;
+    fileName: string;
+    id: number;
+    sourcePath: string;
+    imageUuid: string | null;
+}

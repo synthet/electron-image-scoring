@@ -347,7 +347,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             return {
                 bytes,
                 mimeType,
-                suggestedFileName
+                suggestedFileName,
+                id: image.id,
+                sourcePath: image.win_path || image.file_path,
+                imageUuid: image.image_uuid || null
             };
         } catch (e) {
             console.error('Failed to read displayed preview bytes:', e);
@@ -378,6 +381,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 imageBytes: payload.bytes,
                 mimeType: payload.mimeType,
                 fileName: payload.suggestedFileName,
+                id: payload.id as number,
+                sourcePath: payload.sourcePath as string,
+                imageUuid: payload.imageUuid as string | null
             });
         };
 

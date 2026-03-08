@@ -7,6 +7,7 @@ import * as db from './db';
 import { nefExtractor } from './nefExtractor';
 import { ExifTool } from 'exiftool-vendored';
 import { ApiService } from './apiService';
+import { ExportImageContext } from './types';
 
 const exiftool = new ExifTool({ maxProcs: 2 });
 
@@ -16,7 +17,7 @@ const exiftool = new ExifTool({ maxProcs: 2 });
 // }
 
 let mainWindow: BrowserWindow | null = null;
-let currentExportImageContext: { imageBytes: number[]; mimeType: string; fileName: string } | null = null;
+let currentExportImageContext: ExportImageContext | null = null;
 
 function getDialogWindow(): BrowserWindow | null {
     const focused = BrowserWindow.getFocusedWindow();
@@ -58,10 +59,9 @@ function wrapIpcHandler<T>(
 
 const exportCurrentImage = async () => {
     if (!currentExportImageContext?.imageBytes?.length) {
-        await showMessageBox({
-            type: 'info',
-            title: 'Export',
+        mainWindow?.webContents.send('show-notification', {
             message: 'No image preview is currently available to export.',
+            type: 'warning'
         });
         return;
     }
@@ -76,11 +76,77 @@ const exportCurrentImage = async () => {
         return;
     }
 
-    await fs.promises.writeFile(saveResult.filePath, Buffer.from(currentExportImageContext.imageBytes));
-    await showMessageBox({
-        type: 'info',
-        title: 'Export',
-        message: `Image exported to:\n${saveResult.filePath}`,
+    const targetPath = saveResult.filePath;
+    await fs.promises.writeFile(targetPath, Buffer.from(currentExportImageContext.imageBytes));
+
+    // Enrich with metadata
+    try {
+        const sourcePath = currentExportImageContext.sourcePath;
+        const metadata = [
+            `Original Path: ${sourcePath}`,
+            `Original Name: ${path.basename(sourcePath)}`,
+            `Image UUID: ${currentExportImageContext.imageUuid || 'None'}`,
+            `Export Date: ${new Date().toLocaleString()}`,
+            `Database ID: ${currentExportImageContext.id}`
+        ].join('\n');
+
+        // 1. Copy tags from source if it exists
+        if (fs.existsSync(sourcePath)) {
+            console.log(`[Main] Copying EXIF from ${sourcePath} to ${targetPath}`);
+            // Use command line exiftool for bulk tag copying as it's often more reliable for "TagsFromFile"
+            // but exiftool-vendored can also do it. Let's use the library's write method if possible, 
+            // but copying ALL tags is tricky with just .write().
+            // Actually, exiftool-vendored is a wrapper.
+            // Let's try to copy common tags or use the command line if needed.
+            // The library doesn't easily support TagsFromFile in a high-level way.
+
+            // Fallback to manual copy of important tags if TagsFromFile is not available in the library easily.
+            // Wait, I can use exiftool.execute? 
+            // The exiftool-vendored README says to use .write with a source file? No.
+
+            // I'll use the library to read source and write to target.
+            const sourceTags = await exiftool.read(sourcePath);
+            const tagsToCopy: any = {};
+
+            // Define list of tags to preserve (standard photography tags)
+            const preserveTags = [
+                'Make', 'Model', 'LensModel', 'ISO', 'ExposureTime', 'FNumber',
+                'FocalLength', 'DateTimeOriginal', 'CreateDate', 'GPSLatitude',
+                'GPSLongitude', 'GPSAltitude', 'Orientation'
+            ];
+
+            for (const tag of preserveTags) {
+                if (sourceTags[tag as keyof typeof sourceTags] !== undefined) {
+                    tagsToCopy[tag] = sourceTags[tag as keyof typeof sourceTags];
+                }
+            }
+
+            // Add our custom description
+            tagsToCopy.ImageDescription = metadata;
+            tagsToCopy.Description = metadata; // XMP
+            tagsToCopy.XPComment = metadata;    // Windows
+            tagsToCopy.UserComment = metadata;
+
+            console.log(`[Main] Writing enriched metadata to ${targetPath}`);
+            await exiftool.write(targetPath, tagsToCopy);
+        } else {
+            // Just write our metadata if source is missing
+            await exiftool.write(targetPath, {
+                ImageDescription: metadata,
+                Description: metadata,
+                XPComment: metadata,
+                UserComment: metadata
+            });
+        }
+    } catch (exifErr) {
+        console.error('[Main] Metadata enrichment failed:', exifErr);
+        // We still exported the image, so we don't treat this as a fatal error for the user,
+        // but it's worth logging.
+    }
+
+    mainWindow?.webContents.send('show-notification', {
+        message: `Image exported to:\n${targetPath}`,
+        type: 'success'
     });
 };
 
@@ -379,6 +445,29 @@ app.whenReady().then(async () => {
             throw new Error(`Path is not a directory: ${folderPath}`);
         }
 
+        // Try API first (Gradio backend); fallback to direct Firebird DB
+        const useApi = await apiService.isAvailable();
+        if (useApi) {
+            try {
+                console.log('[Main] Import via API (Gradio backend)');
+                const res = await apiService.importRegister({ folder_path: folderPath });
+                const data = res?.data;
+                const added = data?.added ?? 0;
+                const skipped = data?.skipped ?? 0;
+                const errs = data?.errors ?? [];
+                const total = added + skipped + errs.length;
+                if (total > 0) {
+                    mainWindow?.webContents.send('import:progress', { current: total, total, path: '' });
+                }
+                return { added, skipped, errors: errs };
+            } catch (e) {
+                console.warn('[Main] Import via API failed, falling back to direct DB:', e);
+            }
+        } else {
+            console.log('[Main] Gradio not available, using direct Firebird DB for import');
+        }
+
+        // Fallback: direct Firebird DB
         const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
         const files = entries
             .filter(e => e.isFile())
@@ -500,7 +589,7 @@ app.whenReady().then(async () => {
         }
     }));
 
-    ipcMain.handle('export:set-current-image-context', async (_, context: { imageBytes: number[]; mimeType: string; fileName: string } | null) => {
+    ipcMain.handle('export:set-current-image-context', async (_, context: ExportImageContext | null) => {
         currentExportImageContext = context;
         rebuildApplicationMenu();
         return true;

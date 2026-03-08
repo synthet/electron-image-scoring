@@ -92,6 +92,18 @@ export interface SimilarSearchResult {
     count: number;
 }
 
+// ── Import ───────────────────────────────────────────────────────────────────
+
+export interface ImportRegisterRequest {
+    folder_path: string;
+}
+
+export interface ImportRegisterResponse {
+    success: boolean;
+    message: string;
+    data?: { added: number; skipped: number; errors: string[] };
+}
+
 // ── Pipeline ────────────────────────────────────────────────────────────────
 
 export interface PipelineSubmitRequest {
@@ -105,24 +117,36 @@ export interface PipelineSubmitRequest {
 
 // ── Jobs ────────────────────────────────────────────────────────────────────
 
+/** Matches jobs table / db.get_jobs(). API returns `id` (not job_id). Use id ?? job_id for the primary key. */
 export interface JobInfo {
-    job_id: string | number;
-    job_type: string;
+    id?: number;
+    job_id?: string | number;
+    job_type?: string;
+    input_path?: string;
     status: string;
     created_at?: string;
     completed_at?: string;
+    log?: string;
     progress?: { current: number; total: number };
     [key: string]: unknown;
 }
 
 // ── Stats ───────────────────────────────────────────────────────────────────
 
+/** Matches get_database_stats() from modules/mcp_server.py. Does not include scored_images or tagged_images. */
 export interface DatabaseStats {
     total_images: number;
     by_rating: Record<string, number>;
     by_label: Record<string, number>;
     score_distribution: Record<string, number>;
-    average_scores: Record<string, number>;
+    average_scores: {
+        general: number;
+        technical: number;
+        aesthetic: number;
+        spaq: number;
+        koniq: number;
+        liqe: number;
+    };
     total_folders: number;
     total_stacks: number;
     jobs_by_status: Record<string, number>;

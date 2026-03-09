@@ -1,6 +1,6 @@
 # TODO - Electron Image Scoring
 
-Consolidated list of unfinished work items. See [CODE_DESIGN_REVIEW.md](reviews/CODE_DESIGN_REVIEW.md) for full review context.
+Consolidated list of unfinished work items. See [Code Design Review (Mar 2026)](../reports/01-code-design-review-2026-03.md) for full review context.
 
 ---
 

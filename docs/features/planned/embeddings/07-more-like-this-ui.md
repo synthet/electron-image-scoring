@@ -1,6 +1,6 @@
 # 07 - More Like This UI (Frontend)
 
-*Part of [Embedding Applications - Frontend Implementation Index](EMBEDDING_APPLICATIONS_INDEX.md).*
+*Part of [Embedding Applications - Frontend Implementation Index](README.md).*
 
 ## Goal
 

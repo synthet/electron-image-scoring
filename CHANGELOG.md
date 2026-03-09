@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.33.0] - 2026-03-09
+
+### Changed
+- **Documentation structure**: Finalized docs hierarchy with `architecture`, `features`, `guides`, `planning`, and `reports`; removed legacy `docs/project` and `docs/technical` layouts.
+
 ## [3.32.0] - 2026-03-08
 
 ### Added

@@ -79,8 +79,6 @@ Scope: image-scoring + electron-image-scoring coordinated migration
 
 ## Assumptions and Defaults
 
-- The exact file path you gave (`D:\Projects\electron-image-scoring\docs\technical\migrations\firebird-to-postgresql-pgvector-migration-plan.md`) was not found locally; refinement is based on nearby Electron docs:
-  - `docs/technical/architecture/DATABASE.md`
-  - `docs/technical/architecture/OVERVIEW.md`
+- Related docs: [System Overview](../architecture/01-system-overview.md), [Database Design](../architecture/02-database-design.md)
 - Day-1 cutover remains Python + MCP; Electron migration is required before final decommission.
 - Deployment default remains local Docker Postgres for initial rollout.

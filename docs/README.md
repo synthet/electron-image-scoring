@@ -4,38 +4,55 @@ Welcome to the **Electron Image Scoring** documentation. This index provides a s
 
 ---
 
-## 🏗️ Architecture
+## Architecture
+
 Core system design and high-level technical overviews.
 
-- **[System Overview](technical/architecture/OVERVIEW.md)**: High-density project context, tech stack, and entry points.
-- **[Database Design](technical/architecture/DATABASE.md)**: Database engine overview, migration recommendations, and connection logic.
+- [01 - System Overview](architecture/01-system-overview.md) - High-density project context, tech stack, and entry points
+- [02 - Database Design](architecture/02-database-design.md) - Database engine overview, migration recommendations, and connection logic
 
 ---
 
-## 🚀 Features
-Deep dives into specific capabilities and implementation plans.
+## Features
 
-- **[NEF/RAW Fallback](technical/features/NEF_FALLBACK.md)**: Multi-tier preview extraction system for Nikon RAW files.
-- **[Embedding Applications](technical/features/embeddings/EMBEDDING_APPLICATIONS.md)**: AI-powered similarity search and data analysis features.
-- **[Embeddings Index](technical/features/embeddings/EMBEDDING_APPLICATIONS_INDEX.md)**: Detailed breakdown of individual embedding use cases.
-- **[Windows Native Viewer](technical/features/WINDOWS_VIEWER.md)**: Future planning for a native high-performance viewer.
+Documentation for implemented and planned features.
 
----
+### Implemented
 
-## 📋 Project & Reviews
-Roadmap, code reviews, and audit reports.
+- [01 - NEF/RAW Fallback](features/implemented/01-nef-raw-fallback.md) - Multi-tier preview extraction system for Nikon RAW files
 
-- **[TODO List](project/TODO.md)**: Current roadmap, pending tasks, and recent hardening status.
-- **[Code Design Review](project/reviews/CODE_DESIGN_REVIEW.md)**: Comprehensive March 2026 architectural audit.
-- **[Historic Review (Feb 2026)](project/reviews/2026-02-09-code-and-design-review.md)**: Snapshot of earlier design decisions.
+### Planned
+
+- [01 - Windows Native Viewer](features/planned/01-windows-native-viewer.md) - Future native high-performance viewer
+- [Embedding Applications](features/planned/embeddings/README.md) - AI-powered similarity search and data analysis (8 specs)
 
 ---
 
-## 🛠️ Guides
-Development workflows and maintenance audits.
+## Reports
 
-- **[Lint Audit](technical/guides/LINT_AUDIT.md)**: Code quality status and linting recommendations.
+Code reviews, design audits, and quality assessments.
+
+- [01 - Code Design Review (Mar 2026)](reports/01-code-design-review-2026-03.md) - Comprehensive architectural audit with remediation status
+- [02 - Code Review (Feb 2026)](reports/02-code-review-2026-02.md) - Snapshot of earlier design decisions
+- [03 - ESLint Audit (Mar 2026)](reports/03-eslint-audit-2026-03.md) - Code quality status and linting recommendations
 
 ---
 
-**Navigation**: [Top](#documentation-index) | [Architecture](#️-architecture) | [Features](#-features) | [Project](#-project--reviews) | [Guides](#️-guides)
+## Planning
+
+Roadmap, migration plans, and task tracking.
+
+- [01 - Roadmap (TODO)](planning/01-roadmap-todo.md) - Current roadmap, pending tasks, and recent hardening status
+- [02 - Firebird to PostgreSQL Migration](planning/02-firebird-postgresql-migration.md) - Coordinated platform migration plan
+
+---
+
+## Guides
+
+Development workflows and maintenance recommendations.
+
+- [01 - Lint Recommendations](guides/01-lint-recommendations.md) - Code quality and ESLint fix guidance
+
+---
+
+**Navigation**: [Top](#documentation-index) | [Architecture](#architecture) | [Features](#features) | [Reports](#reports) | [Planning](#planning) | [Guides](#guides)

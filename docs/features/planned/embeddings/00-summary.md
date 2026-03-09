@@ -2,7 +2,7 @@
 
 Based on the [backend proposals](../../../../image-scoring/docs/technical/EMBEDDING_APPLICATIONS.md) for leveraging MobileNetV2 1280-d feature vectors, this document summarizes how the `electron-image-scoring` frontend will expose these capabilities. 
 
-For a detailed breakdown of each feature's UI integration, refer to the [Embedding Applications Index](EMBEDDING_APPLICATIONS_INDEX.md).
+For a detailed breakdown of each feature's UI integration, refer to the [Embedding Applications Index](README.md).
 
 ## Summary of Capabilities
 
@@ -17,4 +17,4 @@ For a detailed breakdown of each feature's UI integration, refer to the [Embeddi
 All features rely heavily on the existing MCP integration (`image-scoring` and `mcp-firebird`) or standard local IPC handlers to communicate with the Python backend. No ML embedding processing runs in the Chromium or Node renderer processes.
 
 ---
-**Next Steps:** See the [Detailed Index](EMBEDDING_APPLICATIONS_INDEX.md) to explore the technical spec for each individual frontend UI feature.
+**Next Steps:** See the [Detailed Index](README.md) to explore the technical spec for each individual frontend UI feature.

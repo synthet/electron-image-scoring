@@ -1,6 +1,6 @@
 # 01 - Diversity-Aware Selection (Frontend)
 
-*Part of [Embedding Applications - Frontend Implementation Index](EMBEDDING_APPLICATIONS_INDEX.md).*
+*Part of [Embedding Applications - Frontend Implementation Index](README.md).*
 
 ## Goal
 

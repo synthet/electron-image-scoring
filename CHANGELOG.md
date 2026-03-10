@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.33.1] - 2026-03-09
+
+### Fixed
+- **Stacks keyword/label filter**: Keyword and color label filters now correctly apply to stacked images via `EXISTS` subqueries, so only stacks containing matching images are shown.
+- **node-firebird crash**: Patched `node-firebird@1.1.9` to guard against `TypeError: Cannot set properties of undefined (setting 'lazy_count')` when the callback queue drains before all socket data is processed.
+
+### Added
+- **Postinstall patch script**: `scripts/patch-node-firebird.js` automatically re-applies the node-firebird crash fix after `npm install`.
+
 ## [3.33.0] - 2026-03-09
 
 ### Changed

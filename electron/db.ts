@@ -1036,15 +1036,19 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<unknow
     }
 
     if (colorLabel) {
-        // No cached colorLabel, only applies to non-stacks?
-        // Wait, stacks might have labels if rep image has label, but original code skipped label filter for stacks
-        // We will keep original behavior: only filter non-stacks by label
+        // Filter stacks where at least one member image has this label
+        wherePartsCache.push('EXISTS (SELECT 1 FROM images ci WHERE ci.stack_id = sc.stack_id AND ci.label = ?)');
+        topParams.push(colorLabel);
+
         wherePartsNonStack.push('i.label = ?');
         botParams.push(colorLabel);
     }
 
     if (keyword) {
-        // Same as colorLabel, apply to non-stacks
+        // Filter stacks where at least one member image has this keyword
+        wherePartsCache.push('EXISTS (SELECT 1 FROM images ci WHERE ci.stack_id = sc.stack_id AND ci.keywords LIKE ?)');
+        topParams.push(`%${keyword}%`);
+
         wherePartsNonStack.push('i.keywords LIKE ?');
         botParams.push(`%${keyword}%`);
     }

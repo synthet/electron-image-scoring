@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.34.0] - 2026-03-10
+
+### Added
+- **Gradio Client Integration**: Added `src/services/gradioClient.ts` for AI model api interfacing.
+- **MCP Server Tools**: Added specific tool actions to `mcp-server/`.
+- **Documentation**: Added `CLAUDE.md`.
+
+### Changed
+- Refactored `electron/apiService.ts` and `electron/db.ts`.
+- Updated app icons for better visual consistency.
+
 ## [3.33.1] - 2026-03-09
 
 ### Fixed

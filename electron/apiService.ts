@@ -264,12 +264,16 @@ export class ApiService {
     }
 
     searchSimilar(opts: SimilarSearchParams) {
-        return this.get<SimilarSearchResult>('/api/similar', {
-            image_id: opts.image_id,
-            limit: opts.limit,
-            folder_path: opts.folder_path,
-            min_similarity: opts.min_similarity,
-        });
+        return this.get<SimilarSearchResult>(
+            '/api/similar',
+            {
+                image_id: opts.image_id,
+                limit: opts.limit,
+                folder_path: opts.folder_path,
+                min_similarity: opts.min_similarity,
+            },
+            LONG_TIMEOUT,
+        );
     }
 
     // ── Data (read-only) ────────────────────────────────────────────────────

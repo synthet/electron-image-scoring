@@ -828,10 +828,65 @@ export async function updateImageDetails(id: number, updates: Record<string, str
 
     try {
         await query(sql, params);
+
+        if (updates['keywords'] !== undefined) {
+            await syncImageKeywords(id, updates['keywords'] as string | null);
+            invalidateKeywordsCache();
+        }
+
         return true;
     } catch (e) {
         console.error('[DB] Update failed:', e);
         return false;
+    }
+}
+
+export async function syncImageKeywords(imageId: number, keywordsStr: string | null): Promise<void> {
+    try {
+        await query('DELETE FROM image_keywords WHERE image_id = ?', [imageId]);
+        
+        if (!keywordsStr) return;
+        
+        const kws = keywordsStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        if (kws.length === 0) return;
+        
+        for (const kw of Array.from(new Set(kws))) {
+            const kwNorm = kw.toLowerCase();
+            let kwId: number | null = null;
+            
+            const existing = await query<{ keyword_id: number }>('SELECT keyword_id FROM keywords_dim WHERE keyword_norm = ?', [kwNorm]);
+            if (existing.length > 0) {
+                kwId = existing[0].keyword_id;
+            } else {
+                try {
+                    const insertResult = await query<{ keyword_id: number }>(
+                        'INSERT INTO keywords_dim (keyword_norm, keyword_display) VALUES (?, ?) RETURNING keyword_id',
+                        [kwNorm, kw]
+                    );
+                    if (insertResult.length > 0) {
+                        kwId = insertResult[0].keyword_id;
+                    }
+                } catch (e) {
+                    const errStr = String(e);
+                    if (errStr.includes('RETURNING') || errStr.includes('syntax')) {
+                        await query('INSERT INTO keywords_dim (keyword_norm, keyword_display) VALUES (?, ?)', [kwNorm, kw]);
+                        const rows = await query<{ keyword_id: number }>('SELECT keyword_id FROM keywords_dim WHERE keyword_norm = ?', [kwNorm]);
+                        if (rows.length > 0) kwId = rows[0].keyword_id;
+                    } else {
+                        throw e;
+                    }
+                }
+            }
+            
+            if (kwId !== null) {
+                await query(
+                    'UPDATE OR INSERT INTO image_keywords (image_id, keyword_id, source, confidence) VALUES (?, ?, ?, ?) MATCHING (image_id, keyword_id)',
+                    [imageId, kwId, 'electron_ui', 1.0]
+                );
+            }
+        }
+    } catch (e) {
+        console.error(`[DB] syncImageKeywords failed for image ${imageId}:`, e);
     }
 }
 

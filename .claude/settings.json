@@ -18,7 +18,8 @@
       "Bash(python3 migrate_salvage.py)",
       "Bash(grep -A5 \"selectFolder\\\\|pickFolder\\\\|chooseFolder\\\\|browseFolder\" /d/Projects/electron-image-scoring/src/components/**/*.tsx)",
       "Bash(xargs grep -l \"ImportModal\\\\|onImportFolderSelected\")",
-      "mcp__mcp-firebird__list-tables"
+      "mcp__mcp-firebird__list-tables",
+      "Bash(ls D:/Projects/image-scoring/*.md D:/Projects/image-scoring/*.json)"
     ],
     "additionalDirectories": [
       "D:\\Projects\\image-scoring"

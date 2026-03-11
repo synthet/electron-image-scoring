@@ -1,7 +1,7 @@
 {
   "name": "electron-gallery",
   "private": true,
-  "version": "3.33.1",
+  "version": "3.34.0",
   "description": "A high-performance image gallery with scoring capabilities",
   "author": "Electron Image Scoring Team",
   "main": "dist-electron/main.js",
@@ -35,6 +35,7 @@
     ]
   },
   "dependencies": {
+    "@gradio/client": "^2.1.0",
     "electron-is-dev": "^3.0.1",
     "exiftool-vendored": "^35.11.0",
     "libraw-wasm": "^1.1.2",

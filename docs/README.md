@@ -52,6 +52,7 @@ Roadmap, migration plans, and task tracking.
 Development workflows and maintenance recommendations.
 
 - [01 - Lint Recommendations](guides/01-lint-recommendations.md) - Code quality and ESLint fix guidance
+- [Agent Coordination](file:///D:/Projects/image-scoring/docs/technical/AGENT_COORDINATION.md) - Cross-project integration and coordination protocols (External)
 
 ---
 

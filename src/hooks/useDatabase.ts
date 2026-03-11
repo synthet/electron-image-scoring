@@ -308,13 +308,26 @@ export function useStacks(pageSize: number = 50, folderId?: number, filters?: Im
     };
 }
 
-export function useSimilarImages(imageId: number | null, limit: number = 20, folderPath?: string, minSimilarity?: number) {
-    const [images, setImages] = useState<any[]>([]);
+export interface SimilarImageResult {
+    image_id: number;
+    file_path: string;
+    similarity: number;
+    [key: string]: unknown;
+}
+
+export function useSimilarImages(
+    imageId: number | null,
+    limit: number = 20,
+    folderPath: string | undefined = undefined,
+    minSimilarity: number = 0.8
+) {
+    const [images, setImages] = useState<SimilarImageResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!imageId || !window.electron) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setImages([]);
             return;
         }
@@ -323,10 +336,18 @@ export function useSimilarImages(imageId: number | null, limit: number = 20, fol
         setLoading(true);
         setError(null);
 
-        window.electron.searchSimilarImages({ imageId, limit, folderPath, minSimilarity })
+        const normalizedFolderPath = folderPath?.trim() || undefined;
+        const normalizedMinSimilarity = Number.isFinite(minSimilarity) ? minSimilarity : 0.8;
+
+        window.electron.searchSimilarImages({
+            imageId,
+            limit,
+            folderPath: normalizedFolderPath,
+            minSimilarity: normalizedMinSimilarity,
+        })
             .then(res => {
                 if (isMounted) {
-                    setImages(res.results || []);
+                    setImages((res.results || []) as SimilarImageResult[]);
                 }
             })
             .catch(err => {

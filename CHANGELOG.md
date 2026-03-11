@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [3.35.0] - 2026-03-10
 
 ### Added
-- **Agent Coordination Documentation**: Formalized cross-project integration protocols between frontend and backend in `D:\Projects\image-scoring\docs\technical\AGENT_COORDINATION.md`.
+- **Agent Coordination Documentation**: Formalized cross-project integration protocols between frontend and backend in [AGENT_COORDINATION.md](https://github.com/synthet/musiq-image-scoring/blob/main/docs/technical/AGENT_COORDINATION.md).
 - **Cross-Project Linking**: Linked agent coordination guide in `AGENTS.md` and `docs/README.md`.
 
 ## [3.34.0] - 2026-03-10

@@ -19,7 +19,7 @@ Agents have access to specialized tools via the `image-scoring` MCP server:
 - **Error Diagnosis**: Analyze failed jobs and missing data.
 
 ## Documentation References
-- **[Agent Coordination](file:///D:/Projects/image-scoring/docs/technical/AGENT_COORDINATION.md)** - Cross-project integration and coordination guide
+- **[Agent Coordination](https://github.com/synthet/musiq-image-scoring/blob/main/docs/technical/AGENT_COORDINATION.md)** - Cross-project integration and coordination guide
 - **[.cursorrules](.cursorrules)**: Core project rules and architecture patterns.
 - **[Project Guide](.agent/PROJECT_GUIDE.md)**: Navigation and maintenance guide.
 - **[AI Edit Spec](.agent/ai_edit_spec.md)**: Coding guidelines for agents.

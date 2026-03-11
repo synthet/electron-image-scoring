@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.35.1] - 2026-03-10
+
+### Added
+- **Database Schema Management**: `fix_thumbnails.js` now automatically checks for and adds the `ORIENTATION` column if missing.
+- **Improved Scripts**: Added support for `DB_PATH` environment variable in maintenance scripts for better portability.
+
+### Changed
+- **Documentation**: Replaced local absolute paths with GitHub repository links for better portability and consistency.
+- **Configuration**: Updated `config.example.json` with current best practices and Firebird path examples.
+- **Linting**: Added `release-builds` to global ignores in `eslint.config.mjs`.
+- **Roadmap**: Updated `docs/planning/01-roadmap-todo.md` with recent progress and prioritized embedding integration.
+
+### Fixed
+- **Thumbnail Rotation**: Enhanced `fix_thumbnails.js` to correctly apply EXIF orientation to generated thumbnails.
+
 ## [3.35.0] - 2026-03-10
 
 ### Added

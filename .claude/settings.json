@@ -8,21 +8,21 @@
       "Bash(echo \"SELECT COUNT\\(*\\) AS SCORED, COUNT\\(SCORE_GENERAL\\) AS HAS_SCORE FROM IMAGES WHERE ID > 49584;\")",
       "Bash(echo \"SELECT COUNT\\(*\\) AS CNT FROM STACK_CACHE WHERE ID > \\(SELECT MAX\\(ID\\) - 25 FROM STACK_CACHE\\);\")",
       "Bash(echo \"SELECT ID, TRIM\\(PATH\\), PARENT_ID, IS_FULLY_SCORED, CREATED_AT, IS_KEYWORDS_PROCESSED FROM FOLDERS WHERE ID > 692 ORDER BY ID;\")",
-      "Bash(./Firebird/isql.exe -user SYSDBA -password masterkey -noautocommit \"localhost:D:\\\\Projects\\\\image-scoring\\\\SCORING_HISTORY_SALVAGE.FDB\")",
-      "Bash(sed 's/^\\\\s*//')",
+      "Bash(./Firebird/isql.exe -user SYSDBA -password masterkey -noautocommit \"localhost:../image-scoring/SCORING_HISTORY_SALVAGE.FDB\")",
+      "Bash(sed 's/^\\s*//')",
       "Bash(echo \"SET MAXROWS 50; SELECT ID, CAST\\(TRIM\\(PATH\\) AS VARCHAR\\(200\\)\\) AS PATH, PARENT_ID, IS_FULLY_SCORED, IS_KEYWORDS_PROCESSED FROM FOLDERS WHERE ID > 692 ORDER BY ID;\")",
       "Bash(python3 -c \"import fdb; print\\(''fdb ok''\\)\")",
       "Bash(python3 -c \"import firebird.driver; print\\(''firebird.driver ok''\\)\")",
       "Bash(python -c \"import fdb; print\\(''fdb ok''\\)\")",
       "Bash(python3 -c \"from firebird.driver import connect; help\\(connect\\)\")",
       "Bash(python3 migrate_salvage.py)",
-      "Bash(grep -A5 \"selectFolder\\\\|pickFolder\\\\|chooseFolder\\\\|browseFolder\" /d/Projects/electron-image-scoring/src/components/**/*.tsx)",
+      "Bash(grep -A5 \"selectFolder\\\\|pickFolder\\\\|chooseFolder\\\\|browseFolder\" ./src/components/**/*.tsx)",
       "Bash(xargs grep -l \"ImportModal\\\\|onImportFolderSelected\")",
       "mcp__mcp-firebird__list-tables",
-      "Bash(ls D:/Projects/image-scoring/*.md D:/Projects/image-scoring/*.json)"
+      "Bash(ls ../image-scoring/*.md ../image-scoring/*.json)"
     ],
     "additionalDirectories": [
-      "D:\\Projects\\image-scoring"
+      "../image-scoring"
     ]
   }
 }

@@ -111,8 +111,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         if (currentIndex >= 0 && allImages && allImages[currentIndex]) {
             setImage(allImages[currentIndex]);
             setDetailsLoaded(false);
+        } else if (currentIndex === -1) {
+            setImage(initialImage);
+            setDetailsLoaded(false);
         }
-    }, [currentIndex, allImages]);
+    }, [currentIndex, allImages, initialImage]);
 
     // Fetch full details
     useEffect(() => {

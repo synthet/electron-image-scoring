@@ -94,7 +94,7 @@ function AppContent({ isConnected }: AppContentProps) {
       if (cleanupImport) cleanupImport();
       if (cleanupNotification) cleanupNotification();
     };
-  }, []);
+  }, [addNotification]);
 
   // Subfolders toggle
   const [includeSubfolders, setIncludeSubfolders] = useState(false);

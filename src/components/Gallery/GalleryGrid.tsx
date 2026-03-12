@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { Logger } from '../../services/Logger';
 
@@ -44,6 +44,7 @@ interface GalleryGridProps {
     onSelectStack?: (stack: Image) => void;
     onStackEndReached?: () => void;
     activeStackId?: number | null;
+    onFindSimilarImages?: (image: Image) => void;
 }
 
 const ItemContainer = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, children, ...props }, ref) => (
@@ -85,9 +86,10 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
     images, onSelect, onEndReached, subfolders, onSelectFolder,
     onNavigateToParent, viewerOpen = false, sortBy = 'score_general',
     stacksMode = false, stacks = [], onSelectStack, onStackEndReached,
-    activeStackId
+    activeStackId, onFindSimilarImages
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; image: Image } | null>(null);
 
     // Escape key handler for parent navigation (only when viewer is closed)
     useEffect(() => {
@@ -112,6 +114,23 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
             containerHeight: el.clientHeight
         });
     }, [images.length, images]);
+
+    useEffect(() => {
+        const closeMenu = () => setContextMenu(null);
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setContextMenu(null);
+        };
+
+        window.addEventListener('click', closeMenu);
+        window.addEventListener('scroll', closeMenu, true);
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.removeEventListener('click', closeMenu);
+            window.removeEventListener('scroll', closeMenu, true);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     const gridComponents = useMemo(() => ({
         List: ItemContainer,
@@ -156,7 +175,14 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
         const labelColor = getLabelColor(img.label);
 
         return (
-            <div onClick={onClick} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div
+                onClick={onClick}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, image: img });
+                }}
+                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+            >
                 <div style={{ flex: 1, backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
                     {src ? (
                         <img
@@ -351,6 +377,45 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
                 components={gridComponents}
                 itemContent={itemContent}
             />
+
+            {contextMenu && onFindSimilarImages && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        zIndex: 2000,
+                        minWidth: 220,
+                        background: '#252526',
+                        border: '1px solid #3b3b3b',
+                        borderRadius: 6,
+                        boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
+                        padding: 4
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        onClick={() => {
+                            onFindSimilarImages(contextMenu.image);
+                            setContextMenu(null);
+                        }}
+                        style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 10px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#e6e6e6',
+                            borderRadius: 4,
+                            cursor: 'pointer'
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3a3d41'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >
+                        Find Similar Images…
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

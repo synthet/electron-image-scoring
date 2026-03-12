@@ -49,6 +49,7 @@ function AppContent({ isConnected }: AppContentProps) {
   const [filters, setFilters] = useState<FilterState>({ minRating: 0, sortBy: 'score_general', order: 'DESC' });
   const [openingImage, setOpeningImage] = useState<ImageRow | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
+  const [initialSimilarSearchImageId, setInitialSimilarSearchImageId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<'gallery' | 'duplicates'>('gallery');
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -254,6 +255,7 @@ function AppContent({ isConnected }: AppContentProps) {
   }, [stacksMode, cacheBuilt, refreshStacks]);
 
   const handleImageClick = (image: ImageRow) => {
+    setInitialSimilarSearchImageId(null);
     const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
     const index = imgList.findIndex(img => img.id === image.id);
     setCurrentImageIndex(index >= 0 ? index : 0);
@@ -315,8 +317,47 @@ function AppContent({ isConnected }: AppContentProps) {
     setSelectedFolderId(parentId);
   };
 
+  const openFolderAndImage = useCallback(async (imageId: number) => {
+    if (!window.electron) return;
+    try {
+      const details = await window.electron.getImageDetails(imageId);
+      if (!details?.folder_id) {
+        addNotification('Unable to locate folder for selected image', 'warning');
+        return;
+      }
+
+      setSelectedFolderId(details.folder_id);
+      setIncludeSubfolders(false);
+      setActiveStackId(null);
+      setActiveStackInfo(null);
+      setStackImages([]);
+      setCurrentImageIndex(0);
+
+      setTimeout(async () => {
+        try {
+          const folderImages = await window.electron!.getImages({ folderId: details.folder_id, limit: 5000, offset: 0, ...filters });
+          const idx = folderImages.findIndex((img) => img.id === imageId);
+          setOpeningImage(idx >= 0 ? folderImages[idx] : ({ ...details, file_name: details.file_name || '' } as ImageRow));
+          setCurrentImageIndex(idx >= 0 ? idx : 0);
+        } catch (err) {
+          console.error('Failed to fetch folder images for jump action', err);
+          setOpeningImage({ ...details, file_name: details.file_name || '' } as ImageRow);
+        }
+      }, 0);
+    } catch (err) {
+      console.error('Failed to jump to image folder', err);
+      addNotification('Failed to jump to image folder', 'error');
+    }
+  }, [addNotification, filters]);
+
+  const handleFindSimilarFromGrid = (image: ImageRow) => {
+    handleImageClick(image);
+    setInitialSimilarSearchImageId(image.id);
+  };
+
   const closeViewer = () => {
     setOpeningImage(null);
+    setInitialSimilarSearchImageId(null);
   };
 
   // Determine current display
@@ -661,6 +702,7 @@ function AppContent({ isConnected }: AppContentProps) {
                   onSelectStack={handleSelectStack}
                   onStackEndReached={loadMoreStacks}
                   activeStackId={activeStackId}
+                  onFindSimilarImages={handleFindSimilarFromGrid}
                 />
                 {openingImage && (
                   <ImageViewer
@@ -670,6 +712,8 @@ function AppContent({ isConnected }: AppContentProps) {
                     currentIndex={currentImageIndex}
                     onNavigate={handleNavigateImage}
                     onDelete={handleImageDelete}
+                    initialSimilarSearchImageId={initialSimilarSearchImageId}
+                    onJumpToImageFolder={openFolderAndImage}
                     onOpenFolder={(folderId) => {
                       setSelectedFolderId(folderId);
                       setIncludeSubfolders(false);

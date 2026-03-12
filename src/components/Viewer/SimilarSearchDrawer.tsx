@@ -115,6 +115,7 @@ export function SimilarSearchDrawer({ open, onClose, queryImageId, currentFolder
                             value={minSimilarity}
                             onChange={(e) => setMinSimilarityInput(e.currentTarget.value)}
                             style={{ flex: 1 }}
+                            aria-label="Minimum Similarity Threshold Slider"
                         />
                         <input
                             type="number"
@@ -123,6 +124,7 @@ export function SimilarSearchDrawer({ open, onClose, queryImageId, currentFolder
                             step={0.01}
                             value={minSimilarityInput}
                             onChange={(e) => setMinSimilarityInput(e.currentTarget.value)}
+                            aria-label="Minimum Similarity Threshold Value"
                             style={{
                                 width: 60,
                                 backgroundColor: '#1a1a1a',
@@ -134,11 +136,18 @@ export function SimilarSearchDrawer({ open, onClose, queryImageId, currentFolder
                         />
                     </div>
                 </label>
-                {resolvedFolderPath && (
-                    <div style={{ color: '#888', fontSize: '0.75em' }} title={resolvedFolderPath}>
-                        Restricted to folder: {resolvedFolderPath}
-                    </div>
-                )}
+                <div style={{
+                    height: resolvedFolderPath ? '1.5em' : '0px',
+                    overflow: 'hidden',
+                    transition: 'height 0.2s ease-in-out, opacity 0.2s ease-in-out',
+                    opacity: resolvedFolderPath ? 1 : 0
+                }}>
+                    {resolvedFolderPath && (
+                        <div style={{ color: '#888', fontSize: '0.75em' }} title={resolvedFolderPath}>
+                            Restricted to folder: {resolvedFolderPath}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: 15 }}>

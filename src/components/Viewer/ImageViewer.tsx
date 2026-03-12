@@ -327,39 +327,39 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     const src = previewSrc;
 
-    const buildExportPayload = async () => {
-        if (!src) {
-            return { error: 'No preview loaded yet.' };
-        }
-
-        try {
-            const response = await fetch(src);
-            const blob = await response.blob();
-            const buffer = await blob.arrayBuffer();
-            const bytes = Array.from(new Uint8Array(buffer));
-            const mimeType = blob.type || 'image/jpeg';
-
-            const baseName = image.file_name.replace(/\.[^/.]+$/, '');
-            const suggestedFileName = mimeType.includes('jpeg') || mimeType.includes('jpg')
-                ? `${baseName}.jpg`
-                : image.file_name;
-
-            return {
-                bytes,
-                mimeType,
-                suggestedFileName,
-                id: image.id,
-                sourcePath: image.win_path || image.file_path,
-                imageUuid: image.image_uuid || null
-            };
-        } catch (e) {
-            console.error('Failed to read displayed preview bytes:', e);
-            return { error: 'Could not read displayed preview bytes.' };
-        }
-    };
-
     useEffect(() => {
         let active = true;
+
+        const buildExportPayload = async () => {
+            if (!src) {
+                return { error: 'No preview loaded yet.' };
+            }
+
+            try {
+                const response = await fetch(src);
+                const blob = await response.blob();
+                const buffer = await blob.arrayBuffer();
+                const bytes = Array.from(new Uint8Array(buffer));
+                const mimeType = blob.type || 'image/jpeg';
+
+                const baseName = image.file_name.replace(/\.[^/.]+$/, '');
+                const suggestedFileName = mimeType.includes('jpeg') || mimeType.includes('jpg')
+                    ? `${baseName}.jpg`
+                    : image.file_name;
+
+                return {
+                    bytes,
+                    mimeType,
+                    suggestedFileName,
+                    id: image.id,
+                    sourcePath: image.win_path || image.file_path,
+                    imageUuid: image.image_uuid || null
+                };
+            } catch (e) {
+                console.error('Failed to read displayed preview bytes:', e);
+                return { error: 'Could not read displayed preview bytes.' };
+            }
+        };
 
         const syncExportContext = async () => {
             if (!window.electron) return;
@@ -395,7 +395,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 void window.electron.setCurrentExportImageContext(null);
             }
         };
-    }, [src, image.file_name]);
+    }, [src, image]);
 
     // Format date
     const dateStr = image.created_at ? new Date(image.created_at).toLocaleString() : 'Unknown';

@@ -49,6 +49,7 @@ function AppContent({ isConnected }: AppContentProps) {
   const [filters, setFilters] = useState<FilterState>({ minRating: 0, sortBy: 'score_general', order: 'DESC' });
   const [openingImage, setOpeningImage] = useState<ImageRow | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
+  const [pendingOpenImageId, setPendingOpenImageId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<'gallery' | 'duplicates'>('gallery');
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -257,6 +258,7 @@ function AppContent({ isConnected }: AppContentProps) {
     const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
     const index = imgList.findIndex(img => img.id === image.id);
     setCurrentImageIndex(index >= 0 ? index : 0);
+    setPendingOpenImageId(null);
     setOpeningImage(image);
   };
 
@@ -264,9 +266,53 @@ function AppContent({ isConnected }: AppContentProps) {
     const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
     if (newIndex >= 0 && newIndex < imgList.length) {
       setCurrentImageIndex(newIndex);
+      setPendingOpenImageId(null);
       setOpeningImage(imgList[newIndex]);
     }
   };
+
+  const openImageById = useCallback(async (id: number): Promise<boolean> => {
+    if (!window.electron) return false;
+
+    try {
+      const details = await window.electron.getImageDetails(id);
+      if (!details) return false;
+
+      setOpeningImage(details as ImageRow);
+      setPendingOpenImageId(id);
+
+      if (details.folder_id && details.folder_id !== selectedFolderId) {
+        setSelectedFolderId(details.folder_id);
+        setIncludeSubfolders(false);
+        setActiveStackId(null);
+        setActiveStackInfo(null);
+        setStackImages([]);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Failed to open image by id:', err);
+      return false;
+    }
+  }, [selectedFolderId]);
+
+  useEffect(() => {
+    if (!pendingOpenImageId) return;
+
+    const imgList = (stacksMode && !activeStackId) ? stacks : (activeStackId ? stackImages : images);
+    const idx = imgList.findIndex(img => img.id === pendingOpenImageId);
+
+    if (idx >= 0) {
+      setCurrentImageIndex(idx);
+      setOpeningImage(imgList[idx]);
+      setPendingOpenImageId(null);
+      return;
+    }
+
+    if (!imagesLoading && !stackImagesLoading && !stacksLoading) {
+      setPendingOpenImageId(null);
+    }
+  }, [pendingOpenImageId, stacksMode, activeStackId, stacks, stackImages, images, imagesLoading, stackImagesLoading, stacksLoading]);
 
   const handleImageDelete = (id: number) => {
     if (activeStackId) {
@@ -316,6 +362,7 @@ function AppContent({ isConnected }: AppContentProps) {
   };
 
   const closeViewer = () => {
+    setPendingOpenImageId(null);
     setOpeningImage(null);
   };
 
@@ -670,6 +717,7 @@ function AppContent({ isConnected }: AppContentProps) {
                     currentIndex={currentImageIndex}
                     onNavigate={handleNavigateImage}
                     onDelete={handleImageDelete}
+                    onOpenImageById={openImageById}
                     onOpenFolder={(folderId) => {
                       setSelectedFolderId(folderId);
                       setIncludeSubfolders(false);

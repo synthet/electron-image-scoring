@@ -43,6 +43,8 @@ interface ImageViewerProps {
     onNavigate?: (newIndex: number) => void;
     onDelete?: (id: number) => void;
     onOpenFolder?: (folderId: number) => void;
+    onJumpToImageFolder?: (imageId: number) => void;
+    initialSimilarSearchImageId?: number | null;
 }
 
 const isWebSafe = (filename: string) => {
@@ -83,7 +85,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     currentIndex = 0,
     onNavigate,
     onDelete,
-    onOpenFolder
+    onOpenFolder,
+    onJumpToImageFolder,
+    initialSimilarSearchImageId
 }) => {
     const [image, setImage] = React.useState<Image>(initialImage);
     const [detailsLoaded, setDetailsLoaded] = React.useState(false);
@@ -191,7 +195,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     // Editing & Drawer State
     const [isEditing, setIsEditing] = useState(false);
-    const [isSimilarDrawerOpen, setIsSimilarDrawerOpen] = useState(false);
+    const [isSimilarDrawerOpen, setIsSimilarDrawerOpen] = useState(!!initialSimilarSearchImageId);
+    const [similarSearchImageId, setSimilarSearchImageId] = useState<number | null>(initialSimilarSearchImageId ?? null);
     const [editForm, setEditForm] = useState({
         title: '',
         description: '',
@@ -199,6 +204,14 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         label: '',
         keywords: ''
     });
+
+
+    useEffect(() => {
+        if (initialSimilarSearchImageId) {
+            setSimilarSearchImageId(initialSimilarSearchImageId);
+            setIsSimilarDrawerOpen(true);
+        }
+    }, [initialSimilarSearchImageId]);
 
     useEffect(() => {
         if (isEditing) {
@@ -865,7 +878,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             )}
 
                             <button
-                                onClick={() => setIsSimilarDrawerOpen(true)}
+                                onClick={() => {
+                                    setSimilarSearchImageId(image.id);
+                                    setIsSimilarDrawerOpen(true);
+                                }}
                                 style={{
                                     width: '100%',
                                     padding: '8px',
@@ -894,7 +910,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             <SimilarSearchDrawer
                 open={isSimilarDrawerOpen}
                 onClose={() => setIsSimilarDrawerOpen(false)}
-                queryImageId={image.id}
+                queryImageId={similarSearchImageId ?? image.id}
                 onSelectImage={(id) => {
                     const idx = allImages.findIndex(img => img.id === id);
                     if (idx >= 0 && onNavigate) {
@@ -904,6 +920,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         alert('Image not found in current view');
                     }
                 }}
+                onJumpToImageFolder={(id) => onJumpToImageFolder?.(id)}
             />
         </div>
     );

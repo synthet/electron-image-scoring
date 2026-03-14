@@ -128,7 +128,8 @@ Renderer has no direct Node.js/file-system access. All capabilities are exposed 
 - Never open a second connection; queue all queries through the single connection
 - Test environment auto-detected via `VITEST=1` env var → uses test DB
 - Firebird server started lazily via PowerShell script on first connection
-- **Read-only queries only.** Schema/DDL belongs to the Python backend.
+- This app executes both read and write queries for user actions (for example metadata/tag updates and cache maintenance).
+- **Do not add new schema ownership/migrations here.** Core schema evolution belongs to the Python backend.
 
 ### 4. Pagination & Memory Management
 
@@ -178,7 +179,7 @@ Reconnection uses exponential backoff: 1s → 30s with 20% jitter, max 50 attemp
 
 | Integration | Address | Purpose |
 |-------------|---------|---------|
-| **Firebird DB** | `127.0.0.1:3050` | Shared `SCORING_HISTORY.FDB` (read-only from this app) |
+| **Firebird DB** | `127.0.0.1:3050` | Shared `SCORING_HISTORY.FDB` (queried by this app; backend remains schema owner) |
 | **FastAPI REST** | `http://127.0.0.1:7860` | Scoring, tagging, clustering, duplicate detection, similarity search |
 | **WebSocket** | `ws://127.0.0.1:7860/ws/updates` | Real-time job events, image updates |
 
@@ -223,7 +224,8 @@ Reconnection uses exponential backoff: 1s → 30s with 20% jitter, max 50 attemp
 
 ```bash
 npm run test       # Vitest watch mode
-npm run test:run   # Single run with coverage
+npm run test:run   # Single run
+npm run test:coverage # Single run with coverage
 ```
 
 Test files live alongside source under `src/`:
@@ -238,7 +240,9 @@ Tests run under jsdom with `VITEST=1` env var set, which causes `electron/db.ts`
 
 ## Build & Packaging
 
-- **Target:** Windows x64 (NSIS installer)
+- **Packaging scripts:**
+  - `npm run build` uses `electron-packager` for a packaged Windows app directory.
+  - `electron-builder` NSIS settings are present in `package.json` build config for installer-based packaging workflows.
 - **Output:** `dist/` (Vite renderer), `dist-electron/` (compiled main process), `release-builds/` (packaged app)
 - **Build sequence:** `tsc` (electron/) → `vite build` (src/) → `electron-packager`
 

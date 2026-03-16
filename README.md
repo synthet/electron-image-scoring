@@ -48,3 +48,4 @@ This application provides a high-performance interface for browsing and filterin
 - `npm run dev`: Launch the app in development mode with HMR.
 - `npm run build`: Build the production application for Windows.
 - `npm run lint`: Run ESLint to check for code quality issues.
+- `npm run test:run`: Run the automated Vitest suite once.

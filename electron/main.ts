@@ -8,6 +8,7 @@ import { nefExtractor } from './nefExtractor';
 import { ExifTool } from 'exiftool-vendored';
 import { ApiService } from './apiService';
 import { ExportImageContext } from './types';
+import { requireJobId, requireNonEmptyString } from './apiBridgeValidators';
 
 const exiftool = new ExifTool({ maxProcs: 2 });
 
@@ -733,6 +734,10 @@ app.whenReady().then(async () => {
         return await apiService.getStatus();
     }));
 
+    ipcMain.handle('api:schema', wrapIpcHandler(async () => {
+        return await apiService.getSchema();
+    }));
+
     ipcMain.handle('api:stats', wrapIpcHandler(async () => {
         return await apiService.getStats();
     }));
@@ -751,7 +756,15 @@ app.whenReady().then(async () => {
     }));
 
     ipcMain.handle('api:scoring-single', wrapIpcHandler(async (_, filePath: string) => {
-        return await apiService.scoreSingleImage(filePath);
+        return await apiService.scoreSingleImage(requireNonEmptyString(filePath, 'filePath'));
+    }));
+
+    ipcMain.handle('api:scoring-fix-db', wrapIpcHandler(async () => {
+        return await apiService.fixScoringDb();
+    }));
+
+    ipcMain.handle('api:scoring-fix-image', wrapIpcHandler(async (_, filePath: string) => {
+        return await apiService.fixImage(requireNonEmptyString(filePath, 'filePath'));
     }));
 
     // Tagging
@@ -793,13 +806,42 @@ app.whenReady().then(async () => {
         return await apiService.submitPipeline(opts);
     }));
 
+    // Data reads
+    ipcMain.handle('api:images', wrapIpcHandler(async (_, params) => {
+        return await apiService.getImages(params);
+    }));
+
+    ipcMain.handle('api:image-detail', wrapIpcHandler(async (_, imageId: number) => {
+        return await apiService.getImageById(imageId);
+    }));
+
+    ipcMain.handle('api:folders', wrapIpcHandler(async () => {
+        return await apiService.getFolders();
+    }));
+
+    ipcMain.handle('api:stacks', wrapIpcHandler(async () => {
+        return await apiService.getStacks();
+    }));
+
+    ipcMain.handle('api:stack-images', wrapIpcHandler(async (_, stackId: number) => {
+        return await apiService.getStackImages(stackId);
+    }));
+
+    ipcMain.handle('api:import-register', wrapIpcHandler(async (_, folderPath: string) => {
+        return await apiService.importRegister({ folder_path: requireNonEmptyString(folderPath, 'folderPath') });
+    }));
+
     // Jobs
     ipcMain.handle('api:jobs-recent', wrapIpcHandler(async () => {
         return await apiService.getRecentJobs();
     }));
 
     ipcMain.handle('api:job-detail', wrapIpcHandler(async (_, jobId: string | number) => {
-        return await apiService.getJob(jobId);
+        return await apiService.getJob(requireJobId(jobId));
+    }));
+
+    ipcMain.handle('api:raw-preview', wrapIpcHandler(async (_, filePath: string) => {
+        return await apiService.getRawPreview(requireNonEmptyString(filePath, 'filePath'));
     }));
 
     console.log('[Main] All IPC handlers registered. Creating window...');

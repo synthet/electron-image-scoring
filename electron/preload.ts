@@ -172,6 +172,10 @@ contextBridge.exposeInMainWorld('electron', {
             const r = await ipcRenderer.invoke('api:status');
             return unwrapEnvelope<StatusResponse>(r);
         },
+        getSchema: async () => {
+            const r = await ipcRenderer.invoke('api:schema');
+            return unwrapEnvelope<unknown>(r);
+        },
         getStats: async () => {
             const r = await ipcRenderer.invoke('api:stats');
             return unwrapEnvelope<DatabaseStats>(r);
@@ -192,6 +196,14 @@ contextBridge.exposeInMainWorld('electron', {
         },
         scoreSingleImage: async (filePath: string) => {
             const r = await ipcRenderer.invoke('api:scoring-single', filePath);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        fixScoringDb: async () => {
+            const r = await ipcRenderer.invoke('api:scoring-fix-db');
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+        fixImage: async (filePath: string) => {
+            const r = await ipcRenderer.invoke('api:scoring-fix-image', filePath);
             return unwrapEnvelope<BackendApiResponse>(r);
         },
 
@@ -237,6 +249,34 @@ contextBridge.exposeInMainWorld('electron', {
             return unwrapEnvelope<BackendApiResponse>(r);
         },
 
+        // Import
+        importRegister: async (folderPath: string) => {
+            const r = await ipcRenderer.invoke('api:import-register', folderPath);
+            return unwrapEnvelope<BackendApiResponse>(r);
+        },
+
+        // Data reads
+        getImages: async (params?: Record<string, string | number | undefined>) => {
+            const r = await ipcRenderer.invoke('api:images', params);
+            return unwrapEnvelope<unknown>(r);
+        },
+        getImageById: async (imageId: number) => {
+            const r = await ipcRenderer.invoke('api:image-detail', imageId);
+            return unwrapEnvelope<unknown>(r);
+        },
+        getFolders: async () => {
+            const r = await ipcRenderer.invoke('api:folders');
+            return unwrapEnvelope<unknown>(r);
+        },
+        getStacks: async () => {
+            const r = await ipcRenderer.invoke('api:stacks');
+            return unwrapEnvelope<unknown>(r);
+        },
+        getStackImages: async (stackId: number) => {
+            const r = await ipcRenderer.invoke('api:stack-images', stackId);
+            return unwrapEnvelope<unknown>(r);
+        },
+
         // Jobs
         getRecentJobs: async () => {
             const r = await ipcRenderer.invoke('api:jobs-recent');
@@ -245,6 +285,10 @@ contextBridge.exposeInMainWorld('electron', {
         getJobDetail: async (jobId: string | number) => {
             const r = await ipcRenderer.invoke('api:job-detail', jobId);
             return unwrapEnvelope<JobInfo>(r);
+        },
+        getRawPreview: async (filePath: string) => {
+            const r = await ipcRenderer.invoke('api:raw-preview', filePath);
+            return unwrapEnvelope<unknown>(r);
         },
     },
 });

@@ -909,7 +909,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                                 )}
                                 {image.job_id && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: '#888' }}>Job ID:</span>
+                                        <span style={{ color: '#888' }}>Run ID:</span>
                                         <span>{image.job_id}</span>
                                     </div>
                                 )}
@@ -957,30 +957,30 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             )}
                         </div>
 
-                        {/* Phases Info */}
+                        {/* Workflow Stages */}
                         <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
-                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Phases</div>
+                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Workflow Stages</div>
                             <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#888' }}>Scoring:</span>
+                                    <span style={{ color: '#888' }}>Quality Analysis:</span>
                                     <span style={{ color: image.score_general !== null && image.score_general !== undefined ? '#4caf50' : '#ffa726' }}>
                                         {image.score_general !== null && image.score_general !== undefined ? 'Completed' : 'Pending'}
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#888' }}>Metadata:</span>
+                                    <span style={{ color: '#888' }}>Inspection:</span>
                                     <span style={{ color: exifData ? '#4caf50' : '#ffa726' }}>
                                         {exifData ? 'Extracted' : 'Pending'}
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#888' }}>Culling:</span>
+                                    <span style={{ color: '#888' }}>Similarity Clustering:</span>
                                     <span style={{ color: image.rating > 0 || (image.label && image.label !== 'None') ? '#4caf50' : '#ffa726' }}>
                                         {image.rating > 0 || (image.label && image.label !== 'None') ? 'Completed' : 'Pending'}
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#888' }}>Keywords:</span>
+                                    <span style={{ color: '#888' }}>Tagging:</span>
                                     <span style={{ color: image.keywords ? '#4caf50' : '#ffa726' }}>
                                         {image.keywords ? 'Completed' : 'Pending'}
                                     </span>

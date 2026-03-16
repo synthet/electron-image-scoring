@@ -4,6 +4,8 @@ Tasks for Electron ↔ Python backend integration. See [Agent Coordination](http
 
 ## REST API
 
+- [x] Bridge core FastAPI operations through secure Electron IPC (`window.electron.api.*`)
+- [x] Normalize backend HTTP errors through IPC envelope responses
 - [ ] Add IPC handlers for new similarity endpoints when backend exposes them (`/api/similarity/*`)
 - [ ] Sync `electron/apiTypes.ts` when backend API contract changes
 

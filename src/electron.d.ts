@@ -148,6 +148,7 @@ declare global {
                 healthCheck: () => Promise<BackendHealthResponse>;
                 isAvailable: () => Promise<boolean>;
                 getStatus: () => Promise<BackendStatusResponse>;
+                getSchema: () => Promise<unknown>;
                 getStats: () => Promise<BackendDatabaseStats>;
 
                 // Scoring
@@ -155,6 +156,8 @@ declare global {
                 stopScoring: () => Promise<BackendApiResponse>;
                 getScoringStatus: () => Promise<BackendStatusResponse>;
                 scoreSingleImage: (filePath: string) => Promise<BackendApiResponse>;
+                fixScoringDb: () => Promise<BackendApiResponse>;
+                fixImage: (filePath: string) => Promise<BackendApiResponse>;
 
                 // Tagging
                 startTagging: (opts: BackendTaggingStartRequest) => Promise<BackendApiResponse>;
@@ -171,9 +174,20 @@ declare global {
                 // Pipeline
                 submitPipeline: (opts: BackendPipelineSubmitRequest) => Promise<BackendApiResponse>;
 
+                // Import
+                importRegister: (folderPath: string) => Promise<BackendApiResponse>;
+
+                // Data reads
+                getImages: (params?: Record<string, string | number | undefined>) => Promise<unknown>;
+                getImageById: (imageId: number) => Promise<unknown>;
+                getFolders: () => Promise<unknown>;
+                getStacks: () => Promise<unknown>;
+                getStackImages: (stackId: number) => Promise<unknown>;
+
                 // Jobs
                 getRecentJobs: () => Promise<BackendJobInfo[]>;
                 getJobDetail: (jobId: string | number) => Promise<BackendJobInfo>;
+                getRawPreview: (filePath: string) => Promise<unknown>;
             };
         };
     }

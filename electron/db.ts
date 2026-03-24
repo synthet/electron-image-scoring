@@ -22,6 +22,27 @@ const config = loadConfig();
 const dbConfig = config.database || {};
 const projectRoot = path.resolve(__dirname, '..');
 
+type SqlDialect = 'firebird' | 'postgres';
+const SQL_DIALECT: SqlDialect = dbConfig.dialect === 'postgres' ? 'postgres' : 'firebird';
+
+interface DialectSqlTemplate {
+    firebird: string;
+    postgres?: string;
+}
+
+function getDialectSql(feature: string, template: DialectSqlTemplate): string {
+    if (SQL_DIALECT === 'postgres') {
+        if (!template.postgres) {
+            const msg = `[DB][SQL] Missing Postgres implementation for feature "${feature}". Falling back to Firebird SQL temporarily.`;
+            console.error(msg);
+            console.assert(false, msg);
+            return template.firebird;
+        }
+        return template.postgres;
+    }
+    return template.firebird;
+}
+
 /** Optional config: see config.example.json → paths */
 interface PathsConfig {
     /** Explicit from→to replacements for thumbnail_path (applied after win/WSL resolution) */
@@ -133,10 +154,15 @@ function normalizeImageRowThumbnails(row: Record<string, unknown>): void {
     delete row.THUMBNAIL_PATH_WIN;
 }
 
+function normalizeImageRowOutput<T extends object>(row: T): T {
+    normalizeImageRowThumbnails(row as Record<string, unknown>);
+    return row;
+}
+
 function mapRowsThumbnails(rows: unknown[]): unknown[] {
     for (const r of rows) {
         if (r && typeof r === 'object') {
-            normalizeImageRowThumbnails(r as Record<string, unknown>);
+            normalizeImageRowOutput(r as Record<string, unknown>);
         }
     }
     return rows;
@@ -477,6 +503,283 @@ function pushFolderFilter(
     }
 }
 
+const SQL_TEMPLATES = {
+    counts: {
+        images: {
+            firebird: 'SELECT COUNT(*) as "count" FROM images {{whereClause}}',
+            postgres: 'SELECT COUNT(*)::bigint as "count" FROM images {{whereClause}}'
+        },
+        stacks: {
+            firebird: `
+                SELECT COUNT(*) as "count" FROM (
+                    SELECT COALESCE(i.stack_id, -i.id) as stack_key
+                    FROM images i
+                    {{whereClause}}
+                    GROUP BY COALESCE(i.stack_id, -i.id)
+                )
+            `,
+            postgres: `
+                SELECT COUNT(*)::bigint as "count" FROM (
+                    SELECT COALESCE(i.stack_id, -i.id) as stack_key
+                    FROM images i
+                    {{whereClause}}
+                    GROUP BY COALESCE(i.stack_id, -i.id)
+                ) s
+            `
+        }
+    },
+    imagesList: {
+        paged: {
+            firebird: `
+                SELECT
+                    i.id,
+                    COALESCE(fp.path, i.file_path) as file_path,
+                    i.file_name,
+                    i.score_general,
+                    i.score_technical,
+                    i.score_aesthetic,
+                    i.score_spaq,
+                    i.score_ava,
+                    i.score_liqe,
+                    i.rating,
+                    i.label,
+                    i.created_at,
+                    i.thumbnail_path,
+                    i.thumbnail_path_win
+                FROM images i
+                LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                    AND POSITION('/thumbnails/' IN fp.path) = 0
+                {{whereClause}}
+                ORDER BY {{sortColumn}} {{sortOrder}}
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            `,
+            postgres: `
+                SELECT
+                    i.id,
+                    COALESCE(fp.path, i.file_path) as file_path,
+                    i.file_name,
+                    i.score_general,
+                    i.score_technical,
+                    i.score_aesthetic,
+                    i.score_spaq,
+                    i.score_ava,
+                    i.score_liqe,
+                    i.rating,
+                    i.label,
+                    i.created_at,
+                    i.thumbnail_path,
+                    i.thumbnail_path_win
+                FROM images i
+                LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                    AND POSITION('/thumbnails/' IN fp.path) = 0
+                {{whereClause}}
+                ORDER BY {{sortColumn}} {{sortOrder}}
+                LIMIT ? OFFSET ?
+            `
+        }
+    },
+    folders: {
+        list: {
+            firebird: `
+                SELECT f.id, f.path, f.parent_id, f.is_fully_scored,
+                       (SELECT COUNT(1) FROM images i WHERE i.folder_id = f.id) as image_count
+                FROM folders f
+                ORDER BY f.path ASC
+            `,
+            postgres: `
+                SELECT f.id, f.path, f.parent_id, f.is_fully_scored,
+                       (SELECT COUNT(1)::bigint FROM images i WHERE i.folder_id = f.id) as image_count
+                FROM folders f
+                ORDER BY f.path ASC
+            `
+        }
+    },
+    stacks: {
+        list: {
+            firebird: `
+                SELECT * FROM (
+                    SELECT
+                        sc.stack_id,
+                        CAST(sc.stack_id AS BIGINT) as stack_key,
+                        sc.image_count,
+                        {{cacheSortCol}} as sort_value,
+                        sc.rep_image_id,
+                        i.id,
+                        COALESCE(fp.path, i.file_path) as file_path,
+                        i.file_name,
+                        i.score_general,
+                        i.score_technical,
+                        i.score_aesthetic,
+                        i.score_spaq,
+                        i.score_ava,
+                        i.score_liqe,
+                        i.rating,
+                        i.label,
+                        i.created_at,
+                        i.thumbnail_path,
+                        i.thumbnail_path_win
+                    FROM stack_cache sc
+                    JOIN images i ON i.id = sc.rep_image_id
+                    LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                        AND POSITION('/thumbnails/' IN fp.path) = 0
+                    {{whereClauseCache}}
+
+                    UNION ALL
+
+                    SELECT
+                        i.stack_id,
+                        CAST(-i.id AS BIGINT) as stack_key,
+                        1 as image_count,
+                        {{nonStackSortCol}} as sort_value,
+                        i.id as rep_image_id,
+                        i.id,
+                        COALESCE(fp.path, i.file_path) as file_path,
+                        i.file_name,
+                        i.score_general,
+                        i.score_technical,
+                        i.score_aesthetic,
+                        i.score_spaq,
+                        i.score_ava,
+                        i.score_liqe,
+                        i.rating,
+                        i.label,
+                        i.created_at,
+                        i.thumbnail_path,
+                        i.thumbnail_path_win
+                    FROM images i
+                    LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                        AND POSITION('/thumbnails/' IN fp.path) = 0
+                    {{whereClauseNonStack}}
+                ) a
+                ORDER BY a.sort_value {{sortOrder}}, a.stack_key DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            `,
+            postgres: `
+                SELECT * FROM (
+                    SELECT
+                        sc.stack_id,
+                        CAST(sc.stack_id AS BIGINT) as stack_key,
+                        sc.image_count,
+                        {{cacheSortCol}} as sort_value,
+                        sc.rep_image_id,
+                        i.id,
+                        COALESCE(fp.path, i.file_path) as file_path,
+                        i.file_name,
+                        i.score_general,
+                        i.score_technical,
+                        i.score_aesthetic,
+                        i.score_spaq,
+                        i.score_ava,
+                        i.score_liqe,
+                        i.rating,
+                        i.label,
+                        i.created_at,
+                        i.thumbnail_path,
+                        i.thumbnail_path_win
+                    FROM stack_cache sc
+                    JOIN images i ON i.id = sc.rep_image_id
+                    LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                        AND POSITION('/thumbnails/' IN fp.path) = 0
+                    {{whereClauseCache}}
+
+                    UNION ALL
+
+                    SELECT
+                        i.stack_id,
+                        CAST(-i.id AS BIGINT) as stack_key,
+                        1 as image_count,
+                        {{nonStackSortCol}} as sort_value,
+                        i.id as rep_image_id,
+                        i.id,
+                        COALESCE(fp.path, i.file_path) as file_path,
+                        i.file_name,
+                        i.score_general,
+                        i.score_technical,
+                        i.score_aesthetic,
+                        i.score_spaq,
+                        i.score_ava,
+                        i.score_liqe,
+                        i.rating,
+                        i.label,
+                        i.created_at,
+                        i.thumbnail_path,
+                        i.thumbnail_path_win
+                    FROM images i
+                    LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                        AND POSITION('/thumbnails/' IN fp.path) = 0
+                    {{whereClauseNonStack}}
+                ) a
+                ORDER BY a.sort_value {{sortOrder}}, a.stack_key DESC
+                LIMIT ? OFFSET ?
+            `
+        },
+        imagesByStack: {
+            firebird: `
+                SELECT
+                    i.id,
+                    COALESCE(fp.path, i.file_path) as file_path,
+                    i.file_name,
+                    i.score_general,
+                    i.score_technical,
+                    i.score_aesthetic,
+                    i.score_spaq,
+                    i.score_ava,
+                    i.score_liqe,
+                    i.rating,
+                    i.label,
+                    i.created_at,
+                    i.thumbnail_path,
+                    i.thumbnail_path_win,
+                    i.stack_id
+                FROM images i
+                LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                    AND POSITION('/thumbnails/' IN fp.path) = 0
+                {{whereClause}}
+                ORDER BY {{sortColumn}} {{sortOrder}}
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            `,
+            postgres: `
+                SELECT
+                    i.id,
+                    COALESCE(fp.path, i.file_path) as file_path,
+                    i.file_name,
+                    i.score_general,
+                    i.score_technical,
+                    i.score_aesthetic,
+                    i.score_spaq,
+                    i.score_ava,
+                    i.score_liqe,
+                    i.rating,
+                    i.label,
+                    i.created_at,
+                    i.thumbnail_path,
+                    i.thumbnail_path_win,
+                    i.stack_id
+                FROM images i
+                LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+                    AND POSITION('/thumbnails/' IN fp.path) = 0
+                {{whereClause}}
+                ORDER BY {{sortColumn}} {{sortOrder}}
+                LIMIT ? OFFSET ?
+            `
+        }
+    },
+    updatesDeletes: {
+        deleteFolder: {
+            firebird: 'DELETE FROM folders WHERE id = ?',
+            postgres: 'DELETE FROM folders WHERE id = ?'
+        },
+        deleteImage: {
+            firebird: 'DELETE FROM images WHERE id = ?',
+            postgres: 'DELETE FROM images WHERE id = ?'
+        },
+        updateImage: {
+            firebird: 'UPDATE images SET {{setClause}} WHERE id = ?',
+            postgres: 'UPDATE images SET {{setClause}} WHERE id = ?'
+        }
+    }
+} as const;
+
 export async function getImageCount(options: ImageQueryOptions = {}): Promise<number> {
     const { folderId, folderIds, minRating, colorLabel, keyword } = options;
     const params: (string | number | null)[] = [];
@@ -501,7 +804,9 @@ export async function getImageCount(options: ImageQueryOptions = {}): Promise<nu
 
     const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
 
-    const rows = await query<{ count: number }>(`SELECT COUNT(*) as "count" FROM images ${whereClause}`, params);
+    const sql = getDialectSql('counts.images', SQL_TEMPLATES.counts.images)
+        .replace('{{whereClause}}', whereClause);
+    const rows = await query<{ count: number }>(sql, params);
     return rows[0]?.count || 0;
 }
 
@@ -552,35 +857,12 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<unknow
     const sortColumn = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
     const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
 
-    // Note: Offset/Limit in Firebird 3+ is OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-    // But we need to put params in order. WHERE params come first.
-
-    params.push(offset, limit);
-
-    const sql = `
-        SELECT 
-            i.id, 
-            COALESCE(fp.path, i.file_path) as file_path, 
-            i.file_name, 
-            i.score_general, 
-            i.score_technical,
-            i.score_aesthetic,
-            i.score_spaq,
-            i.score_ava,
-            i.score_liqe,
-            i.rating, 
-            i.label, 
-            i.created_at, 
-            i.thumbnail_path,
-            i.thumbnail_path_win
-        FROM images i
-        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
-            AND POSITION('/thumbnails/' IN fp.path) = 0
-        ${whereClause}
-        ORDER BY ${sortColumn} ${sortOrder}
-        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-    `;
-    const rows = await query(sql, params);
+    const sql = getDialectSql('imagesList.paged', SQL_TEMPLATES.imagesList.paged)
+        .replace('{{whereClause}}', whereClause)
+        .replace('{{sortColumn}}', sortColumn)
+        .replace('{{sortOrder}}', sortOrder);
+    const pagingParams = SQL_DIALECT === 'postgres' ? [limit, offset] : [offset, limit];
+    const rows = await query(sql, [...params, ...pagingParams]);
     return mapRowsThumbnails(rows);
 }
 
@@ -741,14 +1023,7 @@ export async function getImageDetails(id: number): Promise<ImageDetailRow | null
         return null;
     }
 
-    const image: ImageDetailRow = rows[0] as ImageDetailRow;
-
-    const thumbWin = (image as { thumbnail_path_win?: string }).thumbnail_path_win;
-    const resolvedThumb = resolveThumbnailPathForDisplay(thumbWin, image.thumbnail_path);
-    if (resolvedThumb !== undefined) {
-        image.thumbnail_path = resolvedThumb;
-    }
-    delete (image as { thumbnail_path_win?: string }).thumbnail_path_win;
+    const image: ImageDetailRow = normalizeImageRowOutput(rows[0] as ImageDetailRow);
 
     // Discard win_path if it's actually a thumbnail path (bad data in file_paths table)
     if (image.win_path && image.file_name) {
@@ -807,12 +1082,8 @@ export async function getImageDetails(id: number): Promise<ImageDetailRow | null
 }
 
 export async function getFolders(): Promise<unknown[]> {
-    const rows = await query(`
-        SELECT f.id, f.path, f.parent_id, f.is_fully_scored,
-               (SELECT COUNT(1) FROM images i WHERE i.folder_id = f.id) as image_count
-        FROM folders f
-        ORDER BY f.path ASC
-    `);
+    const sql = getDialectSql('folders.list', SQL_TEMPLATES.folders.list);
+    const rows = await query(sql);
 
 
     return rows;
@@ -826,7 +1097,8 @@ export async function getFolderPathById(id: number): Promise<string | null> {
 
 export async function deleteFolder(id: number): Promise<boolean> {
     try {
-        await query('DELETE FROM folders WHERE id = ?', [id]);
+        const sql = getDialectSql('updatesDeletes.deleteFolder', SQL_TEMPLATES.updatesDeletes.deleteFolder);
+        await query(sql, [id]);
         return true;
     } catch (e) {
         console.error('[DB] Failed to delete folder:', e);
@@ -1010,7 +1282,8 @@ export async function updateImageDetails(id: number, updates: Record<string, str
     if (setParts.length === 0) return false;
 
     params.push(id);
-    const sql = `UPDATE images SET ${setParts.join(', ')} WHERE id = ?`;
+    const sql = getDialectSql('updatesDeletes.updateImage', SQL_TEMPLATES.updatesDeletes.updateImage)
+        .replace('{{setClause}}', setParts.join(', '));
 
     try {
         await query(sql, params);
@@ -1297,66 +1570,14 @@ export async function getStacks(options: StackQueryOptions = {}): Promise<unknow
     const whereClauseCache = wherePartsCache.length > 0 ? 'WHERE ' + wherePartsCache.join(' AND ') : '';
     const whereClauseNonStack = 'WHERE ' + wherePartsNonStack.join(' AND ');
 
-    const sql = `
-        SELECT * FROM (
-            SELECT
-                sc.stack_id,
-                CAST(sc.stack_id AS BIGINT) as stack_key,
-                sc.image_count,
-                ${cacheSortCol} as sort_value,
-                sc.rep_image_id,
-                i.id,
-                COALESCE(fp.path, i.file_path) as file_path,
-                i.file_name,
-                i.score_general,
-                i.score_technical,
-                i.score_aesthetic,
-                i.score_spaq,
-                i.score_ava,
-                i.score_liqe,
-                i.rating,
-            i.label,
-            i.created_at,
-            i.thumbnail_path,
-            i.thumbnail_path_win
-            FROM stack_cache sc
-            JOIN images i ON i.id = sc.rep_image_id
-            LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
-                AND POSITION('/thumbnails/' IN fp.path) = 0
-            ${whereClauseCache}
-
-            UNION ALL
-
-            SELECT
-                i.stack_id,
-                CAST(-i.id AS BIGINT) as stack_key,
-                1 as image_count,
-                ${nonStackSortCol} as sort_value,
-                i.id as rep_image_id,
-                i.id,
-                COALESCE(fp.path, i.file_path) as file_path,
-                i.file_name,
-                i.score_general,
-                i.score_technical,
-                i.score_aesthetic,
-                i.score_spaq,
-                i.score_ava,
-                i.score_liqe,
-                i.rating,
-                i.label,
-                i.created_at,
-                i.thumbnail_path,
-                i.thumbnail_path_win
-            FROM images i
-            LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
-                AND POSITION('/thumbnails/' IN fp.path) = 0
-            ${whereClauseNonStack}
-        ) a
-        ORDER BY a.sort_value ${sortOrder}, a.stack_key DESC
-        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-    `;
-
-    const rows = await query(sql, [...topParams, ...botParams, offset, limit]);
+    const sql = getDialectSql('stacks.list', SQL_TEMPLATES.stacks.list)
+        .replace('{{cacheSortCol}}', cacheSortCol)
+        .replace('{{whereClauseCache}}', whereClauseCache)
+        .replace('{{nonStackSortCol}}', nonStackSortCol)
+        .replace('{{whereClauseNonStack}}', whereClauseNonStack)
+        .replace('{{sortOrder}}', sortOrder);
+    const pagingParams = SQL_DIALECT === 'postgres' ? [limit, offset] : [offset, limit];
+    const rows = await query(sql, [...topParams, ...botParams, ...pagingParams]);
     return mapRowsThumbnails(rows);
 }
 
@@ -1400,33 +1621,12 @@ export async function getImagesByStack(stackId: number | null, options: ImageQue
     const sortColumn = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
     const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
 
-    params.push(offset, limit);
-
-    const sql = `
-        SELECT 
-            i.id, 
-            COALESCE(fp.path, i.file_path) as file_path, 
-            i.file_name, 
-            i.score_general, 
-            i.score_technical,
-            i.score_aesthetic,
-            i.score_spaq,
-            i.score_ava,
-            i.score_liqe,
-            i.rating, 
-            i.label, 
-            i.created_at, 
-            i.thumbnail_path,
-            i.thumbnail_path_win,
-            i.stack_id
-        FROM images i
-        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
-            AND POSITION('/thumbnails/' IN fp.path) = 0
-        ${whereClause}
-        ORDER BY ${sortColumn} ${sortOrder}
-        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-    `;
-    const rows = await query(sql, params);
+    const sql = getDialectSql('stacks.imagesByStack', SQL_TEMPLATES.stacks.imagesByStack)
+        .replace('{{whereClause}}', whereClause)
+        .replace('{{sortColumn}}', sortColumn)
+        .replace('{{sortOrder}}', sortOrder);
+    const pagingParams = SQL_DIALECT === 'postgres' ? [limit, offset] : [offset, limit];
+    const rows = await query(sql, [...params, ...pagingParams]);
     return mapRowsThumbnails(rows);
 }
 
@@ -1454,14 +1654,8 @@ export async function getStackCount(options: StackQueryOptions = {}): Promise<nu
 
     const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
 
-    const sql = `
-        SELECT COUNT(*) as "count" FROM (
-            SELECT COALESCE(i.stack_id, -i.id) as stack_key
-            FROM images i
-            ${whereClause}
-            GROUP BY COALESCE(i.stack_id, -i.id)
-        )
-    `;
+    const sql = getDialectSql('counts.stacks', SQL_TEMPLATES.counts.stacks)
+        .replace('{{whereClause}}', whereClause);
 
     const rows = await query<{ count: number }>(sql, params);
     return rows[0]?.count || 0;
@@ -1532,7 +1726,8 @@ export async function deleteImage(id: number): Promise<boolean> {
     // Given the previous code was just `DELETE FROM images`, it implies either Cascade exists or no dependencies blocking it.
 
     try {
-        await query('DELETE FROM images WHERE id = ?', [id]);
+        const sql = getDialectSql('updatesDeletes.deleteImage', SQL_TEMPLATES.updatesDeletes.deleteImage);
+        await query(sql, [id]);
         console.log('[DB] Database record deleted');
         return true;
     } catch (e) {

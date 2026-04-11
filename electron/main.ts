@@ -42,6 +42,14 @@ function isUnresolvedSyncLayout(camera: string, lens: string): boolean {
     return camera === UNKNOWN_CAMERA_FOLDER || lens === UNKNOWN_LENS_FOLDER;
 }
 
+function backupDateKey(img: ScoredImageForBackup): string {
+    if (img.capture_date && /^\d{4}-\d{2}-\d{2}$/.test(img.capture_date)) {
+        return img.capture_date;
+    }
+    const dateMatch = img.path.match(/(\d{4}-\d{2}-\d{2})/);
+    return dateMatch ? dateMatch[1] : 'unknown';
+}
+
 const exiftool = new ExifTool({ maxProcs: 6 });
 
 function convertFsImagePathForExif(filePath: string): string {
@@ -1136,10 +1144,10 @@ async function startFullApplication(): Promise<void> {
                 return { copied: 0, skipped: 0, deduplicated: 0, errors: [] };
             }
 
-            // Group by date (YYYY-MM-DD) for locality in similarity checks
+            // Group by resolved capture date for locality in similarity checks.
             const groups = new Map<string, typeof allScored>();
             for (const img of allScored) {
-                const date = img.path.match(/(\d{4}-\d{2}-\d{2})/) ? img.path.match(/(\d{4}-\d{2}-\d{2})/)![1] : 'unknown';
+                const date = backupDateKey(img);
                 if (!groups.has(date)) groups.set(date, []);
                 groups.get(date)!.push(img);
             }
@@ -1220,16 +1228,8 @@ async function startFullApplication(): Promise<void> {
                 const details = await db.getImageDetails(img.id);
                 const camera = normalizeCameraModel(details?.exif_model);
                 const lens = normalizeLensFolderName(details?.exif_lens_model);
-                if (isUnresolvedSyncLayout(camera, lens)) {
-                    console.warn(
-                        `[Backup] Skip (missing camera/lens for layout): ${img.path} exif_model=${details?.exif_model ?? '—'} exif_lens_model=${details?.exif_lens_model ?? '—'}`
-                    );
-                    skipped++;
-                    continue;
-                }
-                const dateMatch = img.path.match(/(\d{4}-\d{2}-\d{2})/);
-                const dateStr = dateMatch ? dateMatch[1] : 'unknown';
-                const year = dateStr.split('-')[0];
+                const dateStr = backupDateKey(img);
+                const year = dateStr !== 'unknown' ? dateStr.split('-')[0] : 'unknown';
 
                 const relDir = path.join(camera, lens, year, dateStr);
                 const relPath = path.join(relDir, fileName);

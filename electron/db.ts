@@ -1310,10 +1310,12 @@ export async function getAllScoredImagesForBackup(minScore: number): Promise<Sco
             i.file_name,
             i.score_general as composite_score,
             i.image_hash,
-            i.stack_id
+            i.stack_id,
+            (COALESCE(e.date_time_original, e.create_date, i.created_at))::date::text as capture_date
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
             AND POSITION('/thumbnails/' IN fp.path) = 0
+        LEFT JOIN image_exif e ON e.image_id = i.id
         WHERE i.score_general >= ?
         ORDER BY i.score_general DESC NULLS LAST
     `;

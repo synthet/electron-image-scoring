@@ -194,6 +194,7 @@ interface AppConfig {
     };
     backup?: {
         minScore?: number;
+        similarityThreshold?: number;
         maxInstances?: number;
     };
     [key: string]: unknown;

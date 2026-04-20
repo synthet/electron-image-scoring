@@ -37,7 +37,22 @@ function readSnapshot() {
 }
 
 function normalizeForComparison(obj) {
-    return JSON.stringify(obj, null, 2);
+    const sortValue = (value) => {
+        if (Array.isArray(value)) {
+            return value.map(sortValue);
+        }
+        if (value && typeof value === 'object') {
+            return Object.keys(value)
+                .sort((a, b) => a.localeCompare(b))
+                .reduce((acc, key) => {
+                    acc[key] = sortValue(value[key]);
+                    return acc;
+                }, {});
+        }
+        return value;
+    };
+
+    return JSON.stringify(sortValue(obj), null, 2);
 }
 
 function ensureSiblingOpenApiExists(contextMessage) {

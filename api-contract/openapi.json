@@ -2122,7 +2122,6 @@
           "Image Scoring API"
         ],
         "summary": "Get source image",
-        "description": "Returns an image file from disk for UI rendering by path.",
         "operationId": "get_source_image_source_image_get",
         "parameters": [
           {
@@ -2143,15 +2142,6 @@
                 "schema": {}
               }
             }
-          },
-          "400": {
-            "description": "Bad Request - Invalid input parameters"
-          },
-          "404": {
-            "description": "Not Found - Resource not found"
-          },
-          "500": {
-            "description": "Internal Server Error"
           },
           "422": {
             "description": "Validation Error",

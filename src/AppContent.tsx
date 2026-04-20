@@ -11,7 +11,6 @@ import { ImageViewer } from './components/Viewer/ImageViewer';
 import { NotificationTray } from './components/Layout/NotificationTray';
 import { SettingsModal } from './components/Settings/SettingsModal';
 import { DiagnosticsModal } from './components/Diagnostics/DiagnosticsModal';
-import { DuplicateFinder } from './components/Duplicates/DuplicateFinder';
 import { RunsPage } from './components/Runs/RunsPage';
 import { ImportModal } from './components/Import/ImportModal';
 import { SyncModal } from './components/Sync/SyncModal';
@@ -27,7 +26,6 @@ import { useImageOpener } from './hooks/useImageOpener';
 import { useGalleryWebSocket } from './hooks/useGalleryWebSocket';
 import breadcrumbStyles from './styles/breadcrumbs.module.css';
 import toggleStyles from './styles/toggle.module.css';
-import { EmbeddingMap, type ProjectedEmbeddingPoint } from './components/Embeddings/EmbeddingMap';
 
 function AppContent() {
   const [filters, setFilters] = useState<FilterState>({ minRating: 0, sortBy: 'capture_date', order: 'DESC' });
@@ -206,15 +204,11 @@ function AppContent() {
     ? (stacksLoading && stacks.length === 0)
     : (activeStackId ? stackImagesLoading : (imagesLoading && images.length === 0));
 
-  const headerTitle = currentView === 'embeddings'
-    ? 'Embeddings Map'
-    : activeStackId
-      ? `Stack #${activeStackId}`
-      : (currentFolder ? (currentFolder.title || 'Folder') : 'Image Gallery');
+  const headerTitle = activeStackId
+    ? `Stack #${activeStackId}`
+    : (currentFolder ? (currentFolder.title || 'Folder') : 'Image Gallery');
 
   const breadcrumbsNode = useMemo(() => {
-    if (currentView === 'duplicates' || currentView === 'embeddings') return null;
-
     type BreadcrumbPart = { label: string; onClick: () => void; isActive: boolean };
     const parts: BreadcrumbPart[] = [];
 
@@ -458,17 +452,6 @@ function AppContent() {
                 folders={folders}
                 foldersLoading={foldersLoading}
                 onRefreshFolders={refreshFolders}
-              />
-            ) : currentView === 'duplicates' ? (
-              <DuplicateFinder currentFolder={currentFolder} />
-            ) : currentView === 'embeddings' ? (
-              <EmbeddingMap
-                points={[]}
-                isLoading={false}
-                error={null}
-                onSelectPoint={(point: ProjectedEmbeddingPoint) => {
-                  void openImageById(point.id);
-                }}
               />
             ) : (
               <>

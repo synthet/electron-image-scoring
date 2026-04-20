@@ -585,15 +585,15 @@ const rebuildApplicationMenu = () => {
                     }
                 },
                 {
-                    label: 'Duplicates',
-                    enabled: !folderMode,
+                    label: 'Duplicates (Coming soon)',
+                    enabled: false,
                     click: () => {
                         mainWindow?.webContents.send('open-duplicates');
                     }
                 },
                 {
-                    label: 'Embeddings',
-                    enabled: !folderMode,
+                    label: 'Embeddings (Coming soon)',
+                    enabled: false,
                     click: () => {
                         mainWindow?.webContents.send('open-embeddings');
                     }
